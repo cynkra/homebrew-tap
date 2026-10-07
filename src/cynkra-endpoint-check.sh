@@ -1,20 +1,20 @@
 #!/bin/zsh
-# macOS baseline check for devices used to access customer environments.
+# cynkra endpoint check: security baseline of Macs used for cynkra work and customer access.
 # Read-only: changes nothing, needs no admin rights.
 # Side effect: clears your cached sudo credentials (sudo -k) to test for passwordless sudo.
 # Needs syft and osv-scanner (brew install syft osv-scanner) for the vulnerability check.
 # The software inventory stays on the device; the reports list security settings, autostart
 # entries, container images and vulnerability findings; review them before submitting.
 # Usage:
-#   macos-baseline-check.sh [check] [--offline]   show the result, write .txt/.json to the
+#   cynkra-endpoint-check.sh [check] [--offline]   show the result, write .txt/.json to the
 #                                                 current directory, send nothing (default)
-#   macos-baseline-check.sh install <name@cynkra.com>
+#   cynkra-endpoint-check.sh install <name@cynkra.com>
 #                                                 install; runs at login and once a day
-#   macos-baseline-check.sh owner <name@cynkra.com>
+#   cynkra-endpoint-check.sh owner <name@cynkra.com>
 #                                                 set the owner only (with Homebrew: brew services
-#                                                 start cynkra-baseline runs it at login and daily)
-#   macos-baseline-check.sh run [--force]         check, report, notify (LaunchAgent)
-#   macos-baseline-check.sh uninstall             remove everything (offboarding)
+#                                                 start cynkra-endpoint-check runs it at login and daily)
+#   cynkra-endpoint-check.sh run [--force]         check, report, notify (LaunchAgent)
+#   cynkra-endpoint-check.sh uninstall             remove everything (offboarding)
 #   --offline  skip the steps that need the network (outdated packages, vulnerability check)
 # Installation, scheduled runs, notifications and the report to a Google Form are taken
 # over from the device-check proof of concept (PR #26).
@@ -31,7 +31,7 @@ NOTIFY_INTERVAL_HOURS=20  # repeat the alert for failed checks at most this ofte
 # Google Form for the central overview (empty: send nothing). Form and Sheet setup:
 # handbook/endpoints/uebersicht/ in the ISMS repository. The form is writable without login; the reports are a
 # convenience, the evidence is the monthly export to the ISMS repository.
-FORM_URL="${CYNKRA_BASELINE_FORM_URL-https://docs.google.com/forms/d/e/1FAIpQLSddA7vSG9aLSW9p4wHtDZhP0GZQi4-OL8KR9YjeTtehA24pSg/formResponse}"  # tests set CYNKRA_BASELINE_FORM_URL= to send nothing
+FORM_URL="${CYNKRA_ENDPOINT_CHECK_FORM_URL-https://docs.google.com/forms/d/e/1FAIpQLSddA7vSG9aLSW9p4wHtDZhP0GZQi4-OL8KR9YjeTtehA24pSg/formResponse}"  # tests set CYNKRA_ENDPOINT_CHECK_FORM_URL= to send nothing
 ENTRY_DEVICE_ID="entry.358592572"
 ENTRY_OWNER="entry.855206442"
 ENTRY_MODEL="entry.1513216855"
@@ -41,10 +41,12 @@ ENTRY_DETAILS="entry.1302829151"
 ENTRY_SCRIPT_VERSION="entry.1572118900"
 HELP_URL=""             # optional: guide offered in the alert
 
-SCRIPT_VERSION="0.2.12"
-LABEL="ch.cynkra.baseline-check"
-APP_DIR="$HOME/Library/Application Support/cynkra-baseline-check"
-INSTALLED_SCRIPT="$APP_DIR/macos-baseline-check.sh"
+SCRIPT_VERSION="0.3.0"
+LABEL="ch.cynkra.endpoint-check"
+APP_DIR="$HOME/Library/Application Support/cynkra-endpoint-check"
+OLD_APP_DIR="$HOME/Library/Application Support/cynkra-baseline-check"  # before 0.3.0
+[[ -d "$OLD_APP_DIR" && ! -e "$APP_DIR" ]] && mv "$OLD_APP_DIR" "$APP_DIR"
+INSTALLED_SCRIPT="$APP_DIR/cynkra-endpoint-check.sh"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 LOG_FILE="$HOME/Library/Logs/$LABEL.log"
 
@@ -120,7 +122,7 @@ in_vm=false
 if [[ -n "$(state_get owner)" ]]; then
   result PASS "Owner" "$(state_get owner)"
 else
-  result WARN "Owner" "not set (cynkra-baseline owner name@cynkra.com)"
+  result WARN "Owner" "not set (cynkra-endpoint-check owner name@cynkra.com)"
 fi
 
 # FileVault
@@ -261,7 +263,7 @@ if (( ${#plain} )); then
     if [[ "$p" == *": "* ]]; then names=("${(@s:, :)${p#*: }}"); (( entries += ${#names} )); else (( entries++ )); fi
   done
   result WARN "Plaintext credentials" "${(j:; :)plain} (move to 1Password: op read / op run, gh auth login, aws sso login)" \
-    "$entries in ${#plain} files (names: cynkra-baseline check)"
+    "$entries in ${#plain} files (names: cynkra-endpoint-check check)"
 else
   result PASS "Plaintext credentials" "none found in the usual places"
 fi
@@ -542,7 +544,7 @@ import collections, json, sys
 per = collections.Counter(w for e in json.load(sys.stdin)["fixable"] for w in e.get("where", ["?"]))
 print(", ".join(f"{w} {n}" for w, n in per.most_common(6)) + (f", {len(per) - 6} more" if len(per) > 6 else ""))')
     result WARN "Vulnerable packages" "$fix fixable in $fix_where (update within 14 days, or remove installations you no longer use; details in the .json report)" \
-      "$fix fixable (details: cynkra-baseline check)"
+      "$fix fixable (details: cynkra-endpoint-check check)"
   else
     result PASS "Vulnerable packages" "none fixable"
   fi
@@ -574,7 +576,7 @@ fi
 host=$(scutil --get LocalHostName 2>/dev/null || hostname)
 # Device ID: hash of the serial number, enough to tell devices apart without storing the serial
 serial=$(ioreg -l | awk -F'"' '/IOPlatformSerialNumber/{print $4; exit}' | shasum -a 256 | cut -c1-12)
-header="cynkra macOS baseline check
+header="cynkra endpoint check
 Date:     $(date '+%Y-%m-%d %H:%M')
 User:     $(id -un)
 Device:   $host, ID $serial
@@ -585,7 +587,7 @@ summary=$([[ $fails -eq 0 ]] && echo "Result: all checks passed" || echo "Result
 if [[ "$cmd" == run ]]; then
   mkdir -p "$APP_DIR"; out="$APP_DIR/last-report"
 else
-  out="baseline-$host-$(date +%Y-%m-%d)"
+  out="endpoint-check-$host-$(date +%Y-%m-%d)"
 fi
 if [[ "$cmd" == run && ! -t 1 ]]; then  # scheduled run: log line only; in a terminal show the full report too
   printf "%s\n%s\n%s\n" "$header" "$report" "$summary" > "$out.txt"
