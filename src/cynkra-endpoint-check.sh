@@ -41,7 +41,7 @@ ENTRY_DETAILS="entry.1302829151"
 ENTRY_SCRIPT_VERSION="entry.1572118900"
 HELP_URL=""             # optional: guide offered in the alert
 
-SCRIPT_VERSION="0.3.0"
+SCRIPT_VERSION="0.3.1"
 LABEL="ch.cynkra.endpoint-check"
 APP_DIR="$HOME/Library/Application Support/cynkra-endpoint-check"
 OLD_APP_DIR="$HOME/Library/Application Support/cynkra-baseline-check"  # before 0.3.0
@@ -199,7 +199,7 @@ else
   if (( lock <= MAX_LOCK_SECONDS )); then
     result PASS "Screen lock" "after $(( lock / 60 )) min"
   else
-    result FAIL "Screen lock" "after $(( lock / 60 )) min, max. $(( MAX_LOCK_SECONDS / 60 )) min (System Settings > Lock Screen)"
+    result FAIL "Screen lock" "after $(( lock / 60 )) min, max. $(( MAX_LOCK_SECONDS / 60 )) min (System Settings > Lock Screen: require password immediately, screen saver or display off after at most $(( MAX_LOCK_SECONDS / 60 )) min)"
   fi
 fi
 
@@ -215,7 +215,11 @@ sudo -k 2>/dev/null
 if sudo -n true 2>/dev/null; then
   sudo_status=WARN
   [[ ! "$(date +%Y-%m-%d)" < "$SUDO_FAIL_FROM" ]] && sudo_status=FAIL
-  result $sudo_status "Passwordless sudo" "on; use Touch ID instead: echo 'auth sufficient pam_tid.so' | sudo tee /etc/pam.d/sudo_local"
+  if $in_vm; then  # no Touch ID in a VM
+    result $sudo_status "Passwordless sudo" "on; remove the NOPASSWD rule (sudo grep -rl NOPASSWD /etc/sudoers /etc/sudoers.d) and use the password"
+  else
+    result $sudo_status "Passwordless sudo" "on; use Touch ID instead: echo 'auth sufficient pam_tid.so' | sudo tee /etc/pam.d/sudo_local"
+  fi
 elif grep -qs pam_tid /etc/pam.d/sudo_local /etc/pam.d/sudo; then
   result PASS "Passwordless sudo" "off (Touch ID for sudo)"
 else
