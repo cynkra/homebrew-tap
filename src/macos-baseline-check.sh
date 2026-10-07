@@ -29,7 +29,7 @@ REPORT_INTERVAL_HOURS=20  # report at most this often, unless the status changes
 NOTIFY_INTERVAL_HOURS=20  # remind at most this often
 
 # Google Form for the central overview (empty: send nothing). Form and Sheet setup:
-# README-device-check.md. The form is writable without login; the reports are a
+# isms/endpoints/README.md in the ISMS repository. The form is writable without login; the reports are a
 # convenience, the evidence is the monthly export to the ISMS repository.
 FORM_URL=""
 ENTRY_DEVICE_ID="entry.1557147119"
@@ -41,7 +41,7 @@ ENTRY_DETAILS="entry.1664793652"
 ENTRY_SCRIPT_VERSION="entry.945629687"
 HELP_URL=""             # optional: guide offered in the alert
 
-SCRIPT_VERSION="0.2.1"
+SCRIPT_VERSION="0.2.2"
 LABEL="ch.cynkra.baseline-check"
 APP_DIR="$HOME/Library/Application Support/cynkra-baseline-check"
 INSTALLED_SCRIPT="$APP_DIR/macos-baseline-check.sh"
@@ -232,10 +232,11 @@ else
   result FAIL "1Password" "not installed"
 fi
 
-# Find My Mac: lets a lost device be located, locked and erased (not available in VMs)
+# Find My Mac: lets a lost device be located, locked and erased (not available in VMs).
+# macOS 27 keeps the status in /Library/Preferences/com.apple.FindMyMac; older versions in the account list
 if $in_vm; then
   result INFO "Find My Mac" "not available in a VM"
-elif python3 -c '
+elif [[ "$(defaults read /Library/Preferences/com.apple.FindMyMac FMMEnabled 2>/dev/null)" == 1 ]] || python3 -c '
 import os, plistlib, sys
 d = plistlib.load(open(os.path.expanduser("~/Library/Preferences/MobileMeAccounts.plist"), "rb"))
 sys.exit(0 if any(s.get("Name") == "FIND_MY_MAC" and s.get("Enabled")
