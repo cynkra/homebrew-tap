@@ -390,7 +390,7 @@ known=$(state_get autostart_known)
 if [[ -n "$known" ]]; then
   new=$(comm -13 <(print -r -- "$known") <(print -r -- "$autostart") | grep .)
   if [[ -n "$new" ]]; then
-    result WARN "New autostart entries" "${(j:, :)${(f)new}} (expected? if not, inform the CISO)"
+    result WARN "New autostart entries" "${(j:, :)${(f)new}} (since the last check; turn off if not needed)"
   fi
 fi
 state_set autostart_known "$autostart"
