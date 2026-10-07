@@ -1,0 +1,6 @@
+#!/bin/zsh
+case "$*" in
+  *kern.hv_vmm_present*) print -r -- "${FAKE_VM:-0}" ;;
+  *hw.model*) print -r -- "Mac15,12" ;;
+  *) /usr/sbin/sysctl "$@" ;;
+esac

@@ -1,0 +1,2 @@
+#!/bin/zsh
+print -r -- '"IOPlatformSerialNumber" = "TESTSERIAL1"'

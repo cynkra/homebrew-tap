@@ -1,0 +1,2 @@
+#!/bin/zsh
+print -r -- "{\"SPInstallHistoryDataType\": [{\"_name\": \"XProtectPlistConfigData\", \"install_date\": \"${FAKE_XPROTECT_DATE:-$(date +%Y-%m-%d)}T08:00:00Z\"}]}"

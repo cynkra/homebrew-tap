@@ -1,0 +1,2 @@
+#!/bin/zsh
+print -r -- "${FAKE_SIP:-System Integrity Protection status: enabled.}"

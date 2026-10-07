@@ -125,7 +125,7 @@ case "$(fdesetup status 2>/dev/null)" in
 esac
 
 # Firewall
-if /usr/libexec/ApplicationFirewall/socketfilterfw --getglobalstate | grep -q "enabled"; then
+if "${SOCKETFILTERFW:-/usr/libexec/ApplicationFirewall/socketfilterfw}" --getglobalstate | grep -q "enabled"; then
   result PASS "Firewall" "on"
 else
   result FAIL "Firewall" "off"

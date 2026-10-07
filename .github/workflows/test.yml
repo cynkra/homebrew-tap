@@ -1,0 +1,45 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Syntax
+        run: zsh -n src/macos-baseline-check.sh
+
+      - name: Unit tests with stubbed system commands
+        run: zsh tests/run.zsh
+
+      - name: Real run on the runner (offline checks)
+        run: |
+          mkdir -p "$RUNNER_TEMP/run" && cd "$RUNNER_TEMP/run"
+          zsh "$GITHUB_WORKSPACE/src/macos-baseline-check.sh" check --offline || true
+          python3 - <<'PY'
+          import glob, json
+          (report,) = glob.glob("baseline-*.json")
+          d = json.load(open(report))
+          for key in ("date", "user", "host", "device_id", "macos", "failed", "checks"):
+              assert key in d, key
+          names = {c["check"] for c in d["checks"]}
+          for check in ("FileVault", "Firewall", "Gatekeeper", "SIP", "Screen lock", "macOS version"):
+              assert check in names, check
+          assert all(c["status"] in ("PASS", "FAIL", "WARN", "INFO") for c in d["checks"])
+          print(f"{len(d['checks'])} checks in the report, {d['failed']} failed on the runner")
+          PY
+
+      - name: Formula
+        run: |
+          brew tap cynkra/tap "$GITHUB_WORKSPACE"
+          brew audit --strict cynkra/tap/cynkra-baseline
+          brew install cynkra/tap/cynkra-baseline
+          brew test cynkra/tap/cynkra-baseline

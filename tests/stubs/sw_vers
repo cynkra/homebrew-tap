@@ -1,0 +1,5 @@
+#!/bin/zsh
+case "$1" in
+  -productVersion) print -r -- "${FAKE_MACOS:-27.0.1}" ;;
+  -buildVersion) print -r -- "26A434" ;;
+esac

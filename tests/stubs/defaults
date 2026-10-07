@@ -1,0 +1,5 @@
+#!/bin/zsh
+# defaults read <domain> <key>: values from FAKE_DEFAULTS_<key>, missing key exits 1 like defaults
+key=${@[-1]}
+var="FAKE_DEFAULTS_${key}"
+if [[ -n "${(P)var+x}" ]]; then print -r -- "${(P)var}"; else exit 1; fi

@@ -1,0 +1,2 @@
+#!/bin/zsh
+print -r -- "assessments ${FAKE_GATEKEEPER:-enabled}"

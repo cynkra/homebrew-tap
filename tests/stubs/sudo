@@ -1,0 +1,4 @@
+#!/bin/zsh
+[[ "$1" == -k ]] && exit 0
+[[ "$1" == -n ]] && exit ${FAKE_SUDO_EXIT:-1}
+exit 1

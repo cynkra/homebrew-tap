@@ -1,0 +1,11 @@
+#!/bin/zsh
+# only RecommendedUpdates is read: FAKE_UPDATES="macOS Tahoe|27.0.2;Safari|27.1"
+[[ "$*" == *RecommendedUpdates* ]] || exit 1
+updates=(${(s:;:)FAKE_UPDATES})
+if [[ "$2" == RecommendedUpdates ]]; then print -r -- ${#updates}; exit 0; fi
+i=${${2#RecommendedUpdates.}%%.*}
+entry=${updates[$((i + 1))]}
+case "$2" in
+  *"Display Name") print -r -- "${entry%%|*}" ;;
+  *"Display Version") print -r -- "${entry##*|}" ;;
+esac
