@@ -9,7 +9,7 @@ It changes nothing on the device and needs no admin rights.
 
 ```sh
 brew install cynkra/tap/cynkra-baseline
-cynkra-baseline owner firstname.lastname@cynkra.com
+cynkra-baseline owner name@cynkra.com        # e.g. jannes@cynkra.com
 brew services start cynkra-baseline    # runs at login and once a day
 cynkra-baseline check                  # show the result now
 ```
