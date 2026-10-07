@@ -1,11 +1,11 @@
 #!/bin/zsh
-# Unit tests for src/macos-baseline-check.sh: the system commands it calls are replaced by
+# Unit tests for src/cynkra-endpoint-check.sh: the system commands it calls are replaced by
 # stubs in tests/stubs, which report a healthy device unless a FAKE_* variable says otherwise.
 # Each case sets one condition and checks the status of one line of the report.
 # Usage: zsh tests/run.zsh
 
 root=${0:A:h:h}
-script=$root/src/macos-baseline-check.sh
+script=$root/src/cynkra-endpoint-check.sh
 stubs=$root/tests/stubs
 failed=0 passed=0
 
@@ -26,8 +26,8 @@ expect() {
       esac
     fi
     if [[ "$a" == TEST_KNOWN=* ]]; then  # TEST_KNOWN=<label>: recorded by an earlier run
-      mkdir -p "$tmp/Library/Application Support/cynkra-baseline-check"
-      print -r -- "${a#*=}" >> "$tmp/Library/Application Support/cynkra-baseline-check/autostart_known"
+      mkdir -p "$tmp/Library/Application Support/cynkra-endpoint-check"
+      print -r -- "${a#*=}" >> "$tmp/Library/Application Support/cynkra-endpoint-check/autostart_known"
     fi
     if [[ "$a" == TEST_FILE=* ]]; then
       local spec=${a#*=}; mkdir -p "$tmp/${spec%%:*:h}"; print -r -- "${spec#*:}" >> "$tmp/${spec%%:*}"
@@ -107,16 +107,16 @@ expect PASS 1Password
 expect FAIL 1Password ONEPASSWORD_APP=/nonexistent
 
 expect WARN Owner
-expect PASS Owner TEST_FILE="Library/Application Support/cynkra-baseline-check/owner:jannes@cynkra.com"
+expect PASS Owner TEST_FILE="Library/Application Support/cynkra-endpoint-check/owner:jannes@cynkra.com"
 
 # notifications in scheduled runs: <expected count after run 1> <after run 2> [VAR=value ...]
 notify() {
   local want="$1 $2"; shift 2
   local tmp=$(mktemp -d) got="" i
-  mkdir -p "$tmp/Library/Application Support/cynkra-baseline-check"
-  print jannes@cynkra.com > "$tmp/Library/Application Support/cynkra-baseline-check/owner"
+  mkdir -p "$tmp/Library/Application Support/cynkra-endpoint-check"
+  print jannes@cynkra.com > "$tmp/Library/Application Support/cynkra-endpoint-check/owner"
   for i in 1 2; do
-    (cd $tmp && env -i HOME=$tmp PATH="$stubs:/usr/bin:/bin:/usr/sbin:/sbin" NOTIFY_LOG=$tmp/notify.log CYNKRA_BASELINE_FORM_URL= \
+    (cd $tmp && env -i HOME=$tmp PATH="$stubs:/usr/bin:/bin:/usr/sbin:/sbin" NOTIFY_LOG=$tmp/notify.log CYNKRA_ENDPOINT_CHECK_FORM_URL= \
       SOCKETFILTERFW=$stubs/socketfilterfw FAKE_DEFAULTS_FMMEnabled=1 AUTOSTART_DIRS=$tmp/agents ONEPASSWORD_APP=$tmp "$@" \
       /bin/zsh $script run --offline >/dev/null 2>&1)
     got+="$(cat $tmp/notify.log 2>/dev/null | grep -c .) "
