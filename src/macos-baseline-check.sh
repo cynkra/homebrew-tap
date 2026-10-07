@@ -29,19 +29,19 @@ REPORT_INTERVAL_HOURS=20  # report at most this often, unless the status changes
 NOTIFY_INTERVAL_HOURS=20  # repeat the alert for failed checks at most this often
 
 # Google Form for the central overview (empty: send nothing). Form and Sheet setup:
-# isms/endpoints/README.md in the ISMS repository. The form is writable without login; the reports are a
+# handbook/endpoints/uebersicht/ in the ISMS repository. The form is writable without login; the reports are a
 # convenience, the evidence is the monthly export to the ISMS repository.
-FORM_URL=""
-ENTRY_DEVICE_ID="entry.1557147119"
-ENTRY_OWNER="entry.1422980558"
-ENTRY_MODEL="entry.1425278481"
-ENTRY_OS_VERSION="entry.510632324"
-ENTRY_STATUS="entry.258729802"
-ENTRY_DETAILS="entry.1664793652"
-ENTRY_SCRIPT_VERSION="entry.945629687"
+FORM_URL="${CYNKRA_BASELINE_FORM_URL-https://docs.google.com/forms/d/e/1FAIpQLSddA7vSG9aLSW9p4wHtDZhP0GZQi4-OL8KR9YjeTtehA24pSg/formResponse}"  # tests set CYNKRA_BASELINE_FORM_URL= to send nothing
+ENTRY_DEVICE_ID="entry.358592572"
+ENTRY_OWNER="entry.855206442"
+ENTRY_MODEL="entry.1513216855"
+ENTRY_OS_VERSION="entry.1072409779"
+ENTRY_STATUS="entry.1326653575"
+ENTRY_DETAILS="entry.1302829151"
+ENTRY_SCRIPT_VERSION="entry.1572118900"
 HELP_URL=""             # optional: guide offered in the alert
 
-SCRIPT_VERSION="0.2.8"
+SCRIPT_VERSION="0.2.9"
 LABEL="ch.cynkra.baseline-check"
 APP_DIR="$HOME/Library/Application Support/cynkra-baseline-check"
 INSTALLED_SCRIPT="$APP_DIR/macos-baseline-check.sh"
