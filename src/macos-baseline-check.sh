@@ -41,7 +41,7 @@ ENTRY_DETAILS="entry.1302829151"
 ENTRY_SCRIPT_VERSION="entry.1572118900"
 HELP_URL=""             # optional: guide offered in the alert
 
-SCRIPT_VERSION="0.2.10"
+SCRIPT_VERSION="0.2.11"
 LABEL="ch.cynkra.baseline-check"
 APP_DIR="$HOME/Library/Application Support/cynkra-baseline-check"
 INSTALLED_SCRIPT="$APP_DIR/macos-baseline-check.sh"
@@ -104,10 +104,10 @@ fails=0
 report=""
 rows=""
 
-result() {  # result <PASS|FAIL|WARN|INFO> <check> <detail>
+result() {  # result <PASS|FAIL|WARN|INFO> <check> <detail> [<summary for log and central report>]
   [[ "$1" == "FAIL" ]] && (( fails++ ))
   report+=$(printf "%-4s  %-22s %s" "$1" "$2" "$3")$'\n'
-  rows+="$1"$'\t'"$2"$'\t'"$3"$'\n'
+  rows+="$1"$'\t'"$2"$'\t'"$3"$'\t'"$4"$'\n'
 }
 
 progress "checking security settings"
@@ -256,7 +256,12 @@ for f in ~/.zshrc ~/.zprofile ~/.zshenv ~/.zlogin ~/.bash_profile ~/.bashrc ~/.p
   [[ -n "$vars" ]] && plain+=("${f/#$HOME/~}: ${(j:, :)${(f)vars}}")
 done
 if (( ${#plain} )); then
-  result WARN "Plaintext credentials" "${(j:; :)plain} (move to 1Password: op read / op run, gh auth login, aws sso login)"
+  entries=0
+  for p in $plain; do
+    if [[ "$p" == *": "* ]]; then names=("${(@s:, :)${p#*: }}"); (( entries += ${#names} )); else (( entries++ )); fi
+  done
+  result WARN "Plaintext credentials" "${(j:; :)plain} (move to 1Password: op read / op run, gh auth login, aws sso login)" \
+    "$entries in ${#plain} files (names: cynkra-baseline check)"
 else
   result PASS "Plaintext credentials" "none found in the usual places"
 fi
@@ -536,7 +541,8 @@ PY
 import collections, json, sys
 per = collections.Counter(w for e in json.load(sys.stdin)["fixable"] for w in e.get("where", ["?"]))
 print(", ".join(f"{w} {n}" for w, n in per.most_common(6)) + (f", {len(per) - 6} more" if len(per) > 6 else ""))')
-    result WARN "Vulnerable packages" "$fix fixable in $fix_where (update within 14 days, or remove installations you no longer use; details in the .json report)"
+    result WARN "Vulnerable packages" "$fix fixable in $fix_where (update within 14 days, or remove installations you no longer use; details in the .json report)" \
+      "$fix fixable (details: cynkra-baseline check)"
   else
     result PASS "Vulnerable packages" "none fixable"
   fi
@@ -581,7 +587,7 @@ if [[ "$cmd" == run ]]; then
 else
   out="baseline-$host-$(date +%Y-%m-%d)"
 fi
-if [[ "$cmd" == run ]]; then
+if [[ "$cmd" == run && ! -t 1 ]]; then  # scheduled run: log line only; in a terminal show the full report too
   printf "%s\n%s\n%s\n" "$header" "$report" "$summary" > "$out.txt"
 else
   printf "%s\n%s\n%s\n" "$header" "$report" "$summary" | tee "$out.txt"
@@ -590,7 +596,7 @@ fi
 printf "%s" "$rows" | python3 -c '
 import json, sys
 user, host, serial, macos, date, fails, autostart, images, findings = sys.argv[1:10]
-checks = [dict(zip(["status", "check", "detail"], l.split("\t", 2)))
+checks = [{k: v for k, v in zip(["status", "check", "detail", "summary"], l.split("\t", 3)) if v}
           for l in sys.stdin.read().splitlines() if l]
 json.dump({"date": date, "user": user, "host": host, "device_id": serial,
            "macos": macos, "failed": int(fails), "checks": checks,
@@ -609,7 +615,7 @@ fi
 overall=ok
 print -r -- "$rows" | grep -q '^WARN' && overall=warn
 (( fails )) && overall=fail
-todo=$(print -r -- "$rows" | awk -F'\t' '$1=="FAIL"||$1=="WARN"{print $2": "$3}')
+todo=$(print -r -- "$rows" | awk -F'\t' '$1=="FAIL"||$1=="WARN"{print $2": "($4!=""?$4:$3)}')
 log "status $overall; ${(j:; :)${(f)todo}}"
 
 last=$(state_get last_report); [[ "$last" == <-> ]] || last=0
