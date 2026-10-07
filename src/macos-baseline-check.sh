@@ -41,7 +41,7 @@ ENTRY_DETAILS="entry.1302829151"
 ENTRY_SCRIPT_VERSION="entry.1572118900"
 HELP_URL=""             # optional: guide offered in the alert
 
-SCRIPT_VERSION="0.2.11"
+SCRIPT_VERSION="0.2.12"
 LABEL="ch.cynkra.baseline-check"
 APP_DIR="$HOME/Library/Application Support/cynkra-baseline-check"
 INSTALLED_SCRIPT="$APP_DIR/macos-baseline-check.sh"
@@ -51,7 +51,7 @@ LOG_FILE="$HOME/Library/Logs/$LABEL.log"
 state_get() { cat "$APP_DIR/$1" 2>/dev/null; }
 state_set() { mkdir -p "$APP_DIR" && print -r -- "$2" > "$APP_DIR/$1"; }
 log() { print -r -- "$(date '+%Y-%m-%d %H:%M:%S') $*"; }
-progress() { [[ "$cmd" == check && -t 2 ]] && print -u2 -r -- "… $*"; }
+progress() { [[ "$cmd" == (check|run) && -t 2 ]] && print -u2 -r -- "… $*"; }
 
 cmd=check force=false offline=false
 case "$1" in check|run|install|uninstall|owner) cmd=$1; shift ;; esac
