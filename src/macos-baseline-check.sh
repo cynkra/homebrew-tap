@@ -41,7 +41,7 @@ ENTRY_DETAILS="entry.1664793652"
 ENTRY_SCRIPT_VERSION="entry.945629687"
 HELP_URL=""             # optional: guide offered in the alert
 
-SCRIPT_VERSION="0.2.2"
+SCRIPT_VERSION="0.2.3"
 LABEL="ch.cynkra.baseline-check"
 APP_DIR="$HOME/Library/Application Support/cynkra-baseline-check"
 INSTALLED_SCRIPT="$APP_DIR/macos-baseline-check.sh"
@@ -51,6 +51,7 @@ LOG_FILE="$HOME/Library/Logs/$LABEL.log"
 state_get() { cat "$APP_DIR/$1" 2>/dev/null; }
 state_set() { mkdir -p "$APP_DIR" && print -r -- "$2" > "$APP_DIR/$1"; }
 log() { print -r -- "$(date '+%Y-%m-%d %H:%M:%S') $*"; }
+progress() { [[ "$cmd" == check && -t 2 ]] && print -u2 -r -- "… $*"; }
 
 cmd=check force=false offline=false
 case "$1" in check|run|install|uninstall|owner) cmd=$1; shift ;; esac
@@ -108,6 +109,8 @@ result() {  # result <PASS|FAIL|WARN|INFO> <check> <detail>
   report+=$(printf "%-4s  %-22s %s" "$1" "$2" "$3")$'\n'
   rows+="$1"$'\t'"$2"$'\t'"$3"$'\n'
 }
+
+progress "checking security settings"
 
 # Running inside a virtual machine (e.g. a customer VM in VirtualBuddy)?
 in_vm=false
@@ -304,6 +307,7 @@ else
   result PASS "Pending updates" "none required"
 fi
 
+progress "counting outdated packages (Homebrew, R, Python; needs network)"
 # Outdated packages: counted with each ecosystem's own tool (needs network; not in scheduled runs)
 if ! $offline && [[ "$cmd" == check ]]; then
   outdated=()
@@ -316,6 +320,7 @@ if ! $offline && [[ "$cmd" == check ]]; then
   (( ${#outdated} )) && result INFO "Outdated packages" "${(j:, :)outdated}"
 fi
 
+progress "checking containers and autostart entries"
 # Containers: any runtime with a docker- or podman-compatible CLI (OrbStack, Colima,
 # Docker Desktop, Rancher Desktop, Podman). Lists images; flags ports published to all interfaces.
 container_images=""
@@ -354,6 +359,7 @@ if $offline || ! $vuln_due; then
   result INFO "Vulnerability check" "skipped ($($offline && echo offline || echo "runs weekly"))"
 elif command -v syft >/dev/null && command -v osv-scanner >/dev/null; then
   state_set last_vuln $(date +%s)
+  progress "scanning developer packages for known vulnerabilities (about a minute)"
   tmp=$(mktemp -d)
   targets=() kinds=()
   add() { [[ -d "$2" ]] && { targets+=("$2"); kinds+=("$1"); } }
