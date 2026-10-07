@@ -7,11 +7,18 @@ Tools cynkra employees install on their devices.
 Read-only check of the security baseline of a Mac (FileVault, firewall, updates, screen lock, sudo, SSH keys, Find My Mac, vulnerable developer packages and more), as required by cynkra's endpoint policy.
 It changes nothing on the device and needs no admin rights.
 
+Set up in three steps; all three are needed:
+
 ```sh
 brew install cynkra/tap/cynkra-baseline
-cynkra-baseline owner name@cynkra.com        # e.g. jannes@cynkra.com
-brew services start cynkra-baseline    # runs at login and once a day
-cynkra-baseline check                  # show the result now (about 2 min with the vulnerability scan)
+cynkra-baseline owner name@cynkra.com  # your cynkra address, e.g. jannes@cynkra.com; without it reports are anonymous
+brew services start cynkra-baseline    # runs at login and once a day, reports to the central overview
+```
+
+Show the result at any time:
+
+```sh
+cynkra-baseline check                  # about 2 min with the vulnerability scan
 cynkra-baseline check --offline        # quick check without network, about 1 s
 ```
 

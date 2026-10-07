@@ -41,7 +41,7 @@ ENTRY_DETAILS="entry.1302829151"
 ENTRY_SCRIPT_VERSION="entry.1572118900"
 HELP_URL=""             # optional: guide offered in the alert
 
-SCRIPT_VERSION="0.2.9"
+SCRIPT_VERSION="0.2.10"
 LABEL="ch.cynkra.baseline-check"
 APP_DIR="$HOME/Library/Application Support/cynkra-baseline-check"
 INSTALLED_SCRIPT="$APP_DIR/macos-baseline-check.sh"
@@ -115,6 +115,13 @@ progress "checking security settings"
 # Running inside a virtual machine (e.g. a customer VM in VirtualBuddy)?
 in_vm=false
 [[ "$(sysctl -n kern.hv_vmm_present 2>/dev/null)" == "1" ]] && in_vm=true
+
+# Owner: without it the central overview cannot tell whose device a report is from
+if [[ -n "$(state_get owner)" ]]; then
+  result PASS "Owner" "$(state_get owner)"
+else
+  result WARN "Owner" "not set (cynkra-baseline owner name@cynkra.com)"
+fi
 
 # FileVault
 case "$(fdesetup status 2>/dev/null)" in
