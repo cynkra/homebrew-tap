@@ -1,6 +1,6 @@
 #!/bin/zsh
 # only RecommendedUpdates is read: FAKE_UPDATES="macOS Tahoe|27.0.2;Safari|27.1"
-[[ "$*" == *RecommendedUpdates* ]] || exit 1
+[[ "$*" == *RecommendedUpdates* ]] || exec /usr/bin/plutil "$@"
 updates=(${(s:;:)FAKE_UPDATES})
 if [[ "$2" == RecommendedUpdates ]]; then print -r -- ${#updates}; exit 0; fi
 i=${${2#RecommendedUpdates.}%%.*}
