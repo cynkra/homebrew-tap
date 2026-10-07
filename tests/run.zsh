@@ -15,15 +15,29 @@ expect() {
   local tmp=$(mktemp -d) a
   for a in "$@"; do  # TEST_VSCODE_EXT=<id>: installed VS Code extension; TEST_FILE=<path>:<line>: file in HOME
     [[ "$a" == TEST_VSCODE_EXT=* ]] && mkdir -p "$tmp/.vscode/extensions/${a#*=}-1.0.0"
+    if [[ "$a" == TEST_AGENT=* ]]; then  # TEST_AGENT=<label>:<key>: launchd job in a test directory
+      local spec=${a#*=}; mkdir -p "$tmp/agents"
+      /usr/bin/plutil -create xml1 "$tmp/agents/${spec%%:*}.plist"
+      /usr/bin/plutil -insert Label -string "${spec%%:*}" "$tmp/agents/${spec%%:*}.plist"
+      case "${spec#*:}" in
+        RunAtLoad) /usr/bin/plutil -insert RunAtLoad -bool true "$tmp/agents/${spec%%:*}.plist" ;;
+        StartInterval) /usr/bin/plutil -insert StartInterval -integer 3600 "$tmp/agents/${spec%%:*}.plist" ;;
+        OnDemand) /usr/bin/plutil -insert MachServices -dictionary "$tmp/agents/${spec%%:*}.plist" ;;
+      esac
+    fi
+    if [[ "$a" == TEST_KNOWN=* ]]; then  # TEST_KNOWN=<label>: recorded by an earlier run
+      mkdir -p "$tmp/Library/Application Support/cynkra-baseline-check"
+      print -r -- "${a#*=}" >> "$tmp/Library/Application Support/cynkra-baseline-check/autostart_known"
+    fi
     if [[ "$a" == TEST_FILE=* ]]; then
       local spec=${a#*=}; mkdir -p "$tmp/${spec%%:*:h}"; print -r -- "${spec#*:}" >> "$tmp/${spec%%:*}"
     fi
   done
   local out=$(cd $tmp && env -i HOME=$tmp PATH="$stubs:/usr/bin:/bin:/usr/sbin:/sbin" \
-    SOCKETFILTERFW=$stubs/socketfilterfw FAKE_DEFAULTS_FMMEnabled=1 "$@" /bin/zsh $script check --offline 2>&1)
+    SOCKETFILTERFW=$stubs/socketfilterfw FAKE_DEFAULTS_FMMEnabled=1 AUTOSTART_DIRS=$tmp/agents "$@" /bin/zsh $script check --offline 2>&1)
   local line=$(print -r -- "$out" | grep -E "^(PASS|FAIL|WARN|INFO) +$check( |$)")
   rm -rf $tmp
-  if [[ "$line" == "$want "* ]]; then
+  if [[ "$want" == NONE && -z "$line" ]] || [[ "$want" != NONE && "$line" == "$want "* ]]; then
     (( passed++ ))
   else
     (( failed++ ))
@@ -78,6 +92,14 @@ expect PASS "Plaintext credentials" "TEST_FILE=.zprofile:export GH_TOKEN=\$(op r
 expect PASS "Plaintext credentials" "TEST_FILE=.zshrc:export GITHUB_TOKEN=\$GH_TOKEN"
 expect PASS "Plaintext credentials" "TEST_FILE=.zshrc:export SSH_KEY_PATH=~/.ssh/id_ed25519"
 expect PASS "Plaintext credentials" "TEST_FILE=.zshrc:export NPM_TOKEN="
+
+# autostart: only jobs that start by themselves, warning for new ones after the first run
+expect INFO "Autostart entries" TEST_AGENT=com.example.a:RunAtLoad
+expect PASS "FileVault" TEST_AGENT=com.example.a:RunAtLoad
+expect WARN "New autostart entries" TEST_AGENT=com.example.a:RunAtLoad TEST_AGENT=com.example.b:StartInterval TEST_KNOWN=com.example.a
+expect NONE "New autostart entries" TEST_AGENT=com.example.a:RunAtLoad TEST_KNOWN=com.example.a
+expect NONE "New autostart entries" TEST_AGENT=com.example.a:RunAtLoad TEST_AGENT=com.example.c:OnDemand TEST_KNOWN=com.example.a
+expect NONE "New autostart entries" TEST_AGENT=com.example.a:RunAtLoad
 
 print "$passed passed, $failed failed"
 (( failed == 0 ))

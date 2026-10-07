@@ -41,7 +41,7 @@ ENTRY_DETAILS="entry.1664793652"
 ENTRY_SCRIPT_VERSION="entry.945629687"
 HELP_URL=""             # optional: guide offered in the alert
 
-SCRIPT_VERSION="0.2.5"
+SCRIPT_VERSION="0.2.6"
 LABEL="ch.cynkra.baseline-check"
 APP_DIR="$HOME/Library/Application Support/cynkra-baseline-check"
 INSTALLED_SCRIPT="$APP_DIR/macos-baseline-check.sh"
@@ -365,9 +365,36 @@ for cli in docker podman; do
   result INFO "Container images ($cli)" "$(print -r -- "$imgs" | grep -c .) images (listed in the .json report)"
 done
 
-# Autostart entries: where macOS malware typically persists
-autostart=$(ls -1 ~/Library/LaunchAgents /Library/LaunchAgents /Library/LaunchDaemons 2>/dev/null | grep '\.plist$' | sed 's/\.plist$//' | sort -u)
-result INFO "Autostart entries" "$(print -r -- "$autostart" | grep -c .) entries (listed in the .json report)"
+# Autostart entries: launchd jobs are where macOS malware typically persists. Counted are only
+# jobs that start by themselves (RunAtLoad or KeepAlive) and are not disabled; jobs that are only
+# registered and start on demand (MachServices) are not. A job that is new since the last run is a
+# warning sign, so it is reported; the first run only records the current state.
+disabled=$( { launchctl print-disabled gui/$(id -u); launchctl print-disabled system; } 2>/dev/null \
+  | sed -nE 's/^[[:space:]]*"([^"]+)" => (disabled|true).*/\1/p')
+autostart=""
+for f in ${=AUTOSTART_DIRS:-~/Library/LaunchAgents /Library/LaunchAgents /Library/LaunchDaemons}; do
+  for p in $f/*.plist(N); do
+    label=$(plutil -extract Label raw -o - "$p" 2>/dev/null) || label=${p:t:r}
+    print -r -- "$disabled" | grep -qxF -- "$label" && continue
+    runs=$(plutil -extract RunAtLoad raw -o - "$p" 2>/dev/null)
+    keep=$(plutil -extract KeepAlive raw -o - "$p" 2>/dev/null)
+    [[ "$runs" == true || "$keep" == true ]] \
+      || plutil -extract KeepAlive xml1 -o - "$p" 2>/dev/null | grep -q '<dict>' \
+      || plutil -extract StartInterval raw -o - "$p" >/dev/null 2>&1 \
+      || plutil -extract StartCalendarInterval xml1 -o - "$p" >/dev/null 2>&1 || continue
+    autostart+="$label"$'\n'
+  done
+done
+autostart=$(print -r -- "$autostart" | grep . | sort -u)
+known=$(state_get autostart_known)
+if [[ -n "$known" ]]; then
+  new=$(comm -13 <(print -r -- "$known") <(print -r -- "$autostart") | grep .)
+  if [[ -n "$new" ]]; then
+    result WARN "New autostart entries" "${(j:, :)${(f)new}} (expected? if not, inform the CISO)"
+  fi
+fi
+state_set autostart_known "$autostart"
+result INFO "Autostart entries" "$(print -r -- "$autostart" | grep -c .) start by themselves (listed in the .json report)"
 
 # Vulnerability check, entirely on the device: syft builds a software inventory (SBOM) of
 # developer tooling (Homebrew, R libraries, Python site-packages, global npm packages),
