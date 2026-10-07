@@ -34,7 +34,7 @@ expect() {
     fi
   done
   local out=$(cd $tmp && env -i HOME=$tmp PATH="$stubs:/usr/bin:/bin:/usr/sbin:/sbin" \
-    SOCKETFILTERFW=$stubs/socketfilterfw FAKE_DEFAULTS_FMMEnabled=1 AUTOSTART_DIRS=$tmp/agents "$@" /bin/zsh $script check --offline 2>&1)
+    SOCKETFILTERFW=$stubs/socketfilterfw FAKE_DEFAULTS_FMMEnabled=1 AUTOSTART_DIRS=$tmp/agents ONEPASSWORD_APP=$tmp "$@" /bin/zsh $script check --offline 2>&1)
   local line=$(print -r -- "$out" | grep -E "^(PASS|FAIL|WARN|INFO) +$check( |$)")
   rm -rf $tmp
   if [[ "$want" == NONE && -z "$line" ]] || [[ "$want" != NONE && "$line" == "$want "* ]]; then
@@ -101,13 +101,16 @@ expect NONE "New autostart entries" TEST_AGENT=com.example.a:RunAtLoad TEST_KNOW
 expect NONE "New autostart entries" TEST_AGENT=com.example.a:RunAtLoad TEST_AGENT=com.example.c:OnDemand TEST_KNOWN=com.example.a
 expect NONE "New autostart entries" TEST_AGENT=com.example.a:RunAtLoad
 
+expect PASS 1Password
+expect FAIL 1Password ONEPASSWORD_APP=/nonexistent
+
 # notifications in scheduled runs: <expected count after run 1> <after run 2> [VAR=value ...]
 notify() {
   local want="$1 $2"; shift 2
   local tmp=$(mktemp -d) got="" i
   for i in 1 2; do
     (cd $tmp && env -i HOME=$tmp PATH="$stubs:/usr/bin:/bin:/usr/sbin:/sbin" NOTIFY_LOG=$tmp/notify.log \
-      SOCKETFILTERFW=$stubs/socketfilterfw FAKE_DEFAULTS_FMMEnabled=1 AUTOSTART_DIRS=$tmp/agents "$@" \
+      SOCKETFILTERFW=$stubs/socketfilterfw FAKE_DEFAULTS_FMMEnabled=1 AUTOSTART_DIRS=$tmp/agents ONEPASSWORD_APP=$tmp "$@" \
       /bin/zsh $script run --offline >/dev/null 2>&1)
     got+="$(cat $tmp/notify.log 2>/dev/null | grep -c .) "
   done

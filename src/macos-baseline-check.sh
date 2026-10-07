@@ -255,7 +255,7 @@ else
 fi
 
 # 1Password (on the host; a customer VM gets its password from the host's password manager)
-if [[ -d /Applications/1Password.app ]]; then
+if [[ -d ${ONEPASSWORD_APP:-/Applications/1Password.app} ]]; then
   result PASS "1Password" "installed"
 elif $in_vm; then
   result INFO "1Password" "not installed (customer VM)"
