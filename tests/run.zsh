@@ -65,6 +65,7 @@ expect FAIL XProtect FAKE_XPROTECT_DATE=2020-01-01
 expect FAIL "Screen lock" FAKE_DISPLAYSLEEP=20
 expect FAIL "Automatic login" FAKE_DEFAULTS_autoLoginUser=someone
 expect WARN "Passwordless sudo" FAKE_SUDO_EXIT=0
+expect WARN "Passwordless sudo" FAKE_SUDO_EXIT=0 FAKE_VM=1
 expect FAIL "Find My Mac" FAKE_DEFAULTS_FMMEnabled=0
 expect FAIL "macOS version" FAKE_MACOS=24.6
 expect FAIL "macOS version" FAKE_MACOS=15.7
