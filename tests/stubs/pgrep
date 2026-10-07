@@ -1,0 +1,3 @@
+#!/bin/zsh
+[[ "$*" == *orbit* && -n "$FAKE_FLEET_RUNNING" ]] && exit 0
+exit 1

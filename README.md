@@ -29,3 +29,7 @@ Protection:
 - Release tags `v*` cannot be moved or deleted, and the formula pins a tagged release by checksum.
 - The organisation owners have admin rights on all cynkra repositories; the rulesets apply to them too, and changing a ruleset is recorded in the organisation's audit log.
 - A second person's approval for every pull request is not yet required while the check is under development; it will be turned on afterwards.
+
+## Tests
+
+`zsh tests/run.zsh` runs the checks against stubbed system commands (`tests/stubs`), one condition per case; CI runs them on every pull request together with a real run on a macOS runner and the formula audit.

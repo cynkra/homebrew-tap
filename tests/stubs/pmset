@@ -1,0 +1,2 @@
+#!/bin/zsh
+print -r -- " displaysleep         ${FAKE_DISPLAYSLEEP:-5}"
