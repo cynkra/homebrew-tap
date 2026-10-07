@@ -7,9 +7,10 @@ Tools cynkra employees install on their devices.
 Read-only check of the security baseline of a Mac (FileVault, firewall, updates, screen lock, sudo, SSH keys, Find My Mac, vulnerable developer packages and more), as required by cynkra's endpoint policy.
 It changes nothing on the device and needs no admin rights.
 
-Set up in three steps; all three are needed:
+Set up in four steps; all four are needed:
 
 ```sh
+brew trust --formula cynkra/tap/cynkra-endpoint-check  # Homebrew 7 loads third-party formulae only once trusted
 brew install cynkra/tap/cynkra-endpoint-check
 cynkra-endpoint-check owner name@cynkra.com  # your cynkra address, e.g. jannes@cynkra.com; without it reports are anonymous
 brew services start cynkra-endpoint-check    # runs at login and once a day, reports to the central overview
