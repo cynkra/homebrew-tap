@@ -22,7 +22,7 @@
 MAX_LOCK_SECONDS=300    # ISMS ch. 13: screen lock after at most 5 minutes
 MAX_XPROTECT_DAYS=45    # XProtect normally updates every 1–3 weeks
 SUDO_FAIL_FROM=2027-01-01  # passwordless sudo is a WARN until this date, then a FAIL
-MIN_MACOS_MAJOR=25      # current or previous major version (PR #9); update every autumn
+MIN_MACOS_MAJOR=26      # current or previous major version (PR #9); 15 was followed by 26; update every autumn
 PENDING_FAIL_DAYS=14    # pending updates within the installed major version: FAIL after 14 days
 VULN_INTERVAL_DAYS=7    # scheduled runs: vulnerability check once a week
 REPORT_INTERVAL_HOURS=20  # report at most this often, unless the status changes
@@ -41,7 +41,7 @@ ENTRY_DETAILS="entry.1664793652"
 ENTRY_SCRIPT_VERSION="entry.945629687"
 HELP_URL=""             # optional: guide offered in the alert
 
-SCRIPT_VERSION="0.2.6"
+SCRIPT_VERSION="0.2.7"
 LABEL="ch.cynkra.baseline-check"
 APP_DIR="$HOME/Library/Application Support/cynkra-baseline-check"
 INSTALLED_SCRIPT="$APP_DIR/macos-baseline-check.sh"
