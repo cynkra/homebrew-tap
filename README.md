@@ -18,7 +18,7 @@ cynkra-baseline check --offline        # quick check without network, about 1 s
 Updates arrive with `brew upgrade`.
 Remove with `brew services stop cynkra-baseline && brew uninstall cynkra-baseline`.
 
-What the check reports: the status of each check and the findings; no software list, files or browsing history leave the device.
+What the check reports: the status of each check and the findings; no software list, files or browsing history leave the device. Plaintext credentials are reported by file and variable name only, never the value.
 
 ## Security of this tap
 
