@@ -41,7 +41,7 @@ ENTRY_DETAILS="entry.1664793652"
 ENTRY_SCRIPT_VERSION="entry.945629687"
 HELP_URL=""             # optional: guide offered in the alert
 
-SCRIPT_VERSION="0.2.3"
+SCRIPT_VERSION="0.2.4"
 LABEL="ch.cynkra.baseline-check"
 APP_DIR="$HOME/Library/Application Support/cynkra-baseline-check"
 INSTALLED_SCRIPT="$APP_DIR/macos-baseline-check.sh"
@@ -224,6 +224,34 @@ if (( ${#unencrypted} )); then
   result WARN "SSH keys" "without passphrase: ${(j:, :)unencrypted} (ssh-keygen -p -f ~/.ssh/<key>, or move them to 1Password)"
 else
   result PASS "SSH keys" "no unencrypted private keys in ~/.ssh"
+fi
+
+# Plaintext credentials (warning only, rule introduced in stages): reports file and variable
+# names, never values. Values read from 1Password ($(op read ...)), other variables, paths
+# and empty values are not reported.
+plain=()
+[[ -f ~/.netrc ]] && grep -qE '(^|[[:space:]])password[[:space:]]' ~/.netrc && plain+=("~/.netrc")
+[[ -s ~/.git-credentials ]] && plain+=("~/.git-credentials")
+[[ -f ~/.aws/credentials ]] && grep -q 'aws_secret_access_key' ~/.aws/credentials && plain+=("~/.aws/credentials")
+[[ -f ~/.npmrc ]] && grep -q '_authToken=' ~/.npmrc && plain+=("~/.npmrc")
+[[ -f ~/.pypirc ]] && grep -qE '^[[:space:]]*password' ~/.pypirc && plain+=("~/.pypirc")
+[[ -f ~/.config/gh/hosts.yml ]] && grep -q 'oauth_token:' ~/.config/gh/hosts.yml && plain+=("~/.config/gh/hosts.yml")
+[[ -f ~/.docker/config.json ]] && python3 -c '
+import json, os, sys
+d = json.load(open(os.path.expanduser("~/.docker/config.json")))
+sys.exit(0 if not d.get("credsStore") and any(v.get("auth") for v in d.get("auths", {}).values()) else 1)' 2>/dev/null \
+  && plain+=("~/.docker/config.json")
+for f in ~/.zshrc ~/.zprofile ~/.zshenv ~/.zlogin ~/.bash_profile ~/.bashrc ~/.profile ~/.Renviron ~/.*secret*(N.); do
+  [[ -f $f ]] || continue
+  vars=$(grep -E '^[[:space:]]*(export[[:space:]]+)?[A-Za-z_][A-Za-z0-9_]*(TOKEN|SECRET|PASSWORD|PASSWD|API_KEY|APIKEY|_PAT|_KEY)[A-Za-z0-9_]*=' "$f" \
+    | grep -vE '=[[:space:]]*["'"'"']?([$`/~]|$)' \
+    | sed -E 's/^[[:space:]]*(export[[:space:]]+)?([A-Za-z0-9_]+)=.*/\2/' | sort -u)
+  [[ -n "$vars" ]] && plain+=("${f/#$HOME/~}: ${(j:, :)${(f)vars}}")
+done
+if (( ${#plain} )); then
+  result WARN "Plaintext credentials" "${(j:; :)plain} (move to 1Password: op read / op run, gh auth login, aws sso login)"
+else
+  result PASS "Plaintext credentials" "none found in the usual places"
 fi
 
 # 1Password (on the host; a customer VM gets its password from the host's password manager)

@@ -13,8 +13,11 @@ failed=0 passed=0
 expect() {
   local want=$1 check=$2; shift 2
   local tmp=$(mktemp -d) a
-  for a in "$@"; do  # TEST_VSCODE_EXT=<id>: an installed VS Code extension
+  for a in "$@"; do  # TEST_VSCODE_EXT=<id>: installed VS Code extension; TEST_FILE=<path>:<line>: file in HOME
     [[ "$a" == TEST_VSCODE_EXT=* ]] && mkdir -p "$tmp/.vscode/extensions/${a#*=}-1.0.0"
+    if [[ "$a" == TEST_FILE=* ]]; then
+      local spec=${a#*=}; mkdir -p "$tmp/${spec%%:*:h}"; print -r -- "${spec#*:}" >> "$tmp/${spec%%:*}"
+    fi
   done
   local out=$(cd $tmp && env -i HOME=$tmp PATH="$stubs:/usr/bin:/bin:/usr/sbin:/sbin" \
     SOCKETFILTERFW=$stubs/socketfilterfw FAKE_DEFAULTS_FMMEnabled=1 "$@" /bin/zsh $script check --offline 2>&1)
@@ -63,6 +66,18 @@ expect PASS "Fleet agent" FAKE_VM=1 FAKE_FLEET_RUNNING=1
 expect PASS "AI extensions" FAKE_VM=1 TEST_VSCODE_EXT=ms-python.python
 expect FAIL "AI extensions" FAKE_VM=1 TEST_VSCODE_EXT=github.copilot
 expect FAIL "AI extensions" FAKE_VM=1 TEST_VSCODE_EXT=anthropic.claude-code
+
+# plaintext credentials: names only, values from 1Password, other variables and paths are fine
+expect PASS "Plaintext credentials"
+expect WARN "Plaintext credentials" "TEST_FILE=.zprofile:export GH_TOKEN=ghp_abc123"
+expect WARN "Plaintext credentials" "TEST_FILE=.zprofile_secrets:export ANTHROPIC_API_KEY=sk-ant-x"
+expect WARN "Plaintext credentials" "TEST_FILE=.Renviron:GITHUB_PAT=ghp_abc123"
+expect WARN "Plaintext credentials" "TEST_FILE=.git-credentials:https://user:pw@github.com"
+expect WARN "Plaintext credentials" "TEST_FILE=.aws/credentials:aws_secret_access_key = abc"
+expect PASS "Plaintext credentials" "TEST_FILE=.zprofile:export GH_TOKEN=\$(op read op://Private/gh/token)"
+expect PASS "Plaintext credentials" "TEST_FILE=.zshrc:export GITHUB_TOKEN=\$GH_TOKEN"
+expect PASS "Plaintext credentials" "TEST_FILE=.zshrc:export SSH_KEY_PATH=~/.ssh/id_ed25519"
+expect PASS "Plaintext credentials" "TEST_FILE=.zshrc:export NPM_TOKEN="
 
 print "$passed passed, $failed failed"
 (( failed == 0 ))
