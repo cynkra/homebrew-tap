@@ -111,10 +111,11 @@ notify() {
       /bin/zsh $script run --offline >/dev/null 2>&1)
     got+="$(cat $tmp/notify.log 2>/dev/null | grep -c .) "
   done
-  rm -rf $tmp
   if [[ "${got% }" == "$want" ]]; then (( passed++ )); else
     (( failed++ )); print -r -- "not ok: notifications with ${*:-defaults} should be $want; got: ${got% }"
+    sed 's/^/  /' $tmp/notify.log
   fi
+  rm -rf $tmp
 }
 notify 0 0                                         # healthy device: nothing
 notify 1 1 FAKE_FDESETUP="FileVault is Off."       # failed check: alert, repeated after 20 h only
