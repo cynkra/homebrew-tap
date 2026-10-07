@@ -1,8 +1,8 @@
 class CynkraBaseline < Formula
   desc "Read-only security baseline check for Macs used for cynkra work"
   homepage "https://github.com/cynkra/homebrew-tap"
-  url "https://github.com/cynkra/homebrew-tap/archive/refs/tags/v0.2.2.tar.gz"
-  sha256 "d02e86026f0af1ab276fcedea8a4ae212000893625d18381c39aa8463044a775"
+  url "https://github.com/cynkra/homebrew-tap/archive/refs/tags/v0.2.3.tar.gz"
+  sha256 "7a386008e18bfa3309bfa926d63a0c923d7e05f21a9d6871879bf393bdb56cbf"
   license "MIT"
 
   depends_on :macos
