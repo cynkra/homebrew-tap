@@ -587,7 +587,7 @@ if [[ "$cmd" == run ]]; then
 else
   out="baseline-$host-$(date +%Y-%m-%d)"
 fi
-if [[ "$cmd" == run ]]; then
+if [[ "$cmd" == run && ! -t 1 ]]; then  # scheduled run: log line only; in a terminal show the full report too
   printf "%s\n%s\n%s\n" "$header" "$report" "$summary" > "$out.txt"
 else
   printf "%s\n%s\n%s\n" "$header" "$report" "$summary" | tee "$out.txt"
