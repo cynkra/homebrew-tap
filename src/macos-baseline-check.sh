@@ -26,7 +26,7 @@ MIN_MACOS_MAJOR=25      # current or previous major version (PR #9); update ever
 PENDING_FAIL_DAYS=14    # pending updates within the installed major version: FAIL after 14 days
 VULN_INTERVAL_DAYS=7    # scheduled runs: vulnerability check once a week
 REPORT_INTERVAL_HOURS=20  # report at most this often, unless the status changes
-NOTIFY_INTERVAL_HOURS=20  # remind at most this often
+NOTIFY_INTERVAL_HOURS=20  # repeat the alert for failed checks at most this often
 
 # Google Form for the central overview (empty: send nothing). Form and Sheet setup:
 # isms/endpoints/README.md in the ISMS repository. The form is writable without login; the reports are a
@@ -41,7 +41,7 @@ ENTRY_DETAILS="entry.1664793652"
 ENTRY_SCRIPT_VERSION="entry.945629687"
 HELP_URL=""             # optional: guide offered in the alert
 
-SCRIPT_VERSION="0.2.6"
+SCRIPT_VERSION="0.2.7"
 LABEL="ch.cynkra.baseline-check"
 APP_DIR="$HOME/Library/Application Support/cynkra-baseline-check"
 INSTALLED_SCRIPT="$APP_DIR/macos-baseline-check.sh"
@@ -624,12 +624,15 @@ if [[ -n "$FORM_URL" ]] && { $force || [[ "$overall" != "$(state_get last_status
   fi
 fi
 
-# Notify: FAIL as an alert, WARN as a notification, at most every NOTIFY_INTERVAL_HOURS
+# Notify: FAIL as an alert, repeated at most every NOTIFY_INTERVAL_HOURS;
+# WARN as a notification, only when a warning is new or has changed since the last run
+warns=$(print -r -- "$rows" | awk -F'\t' '$1=="WARN"{print $2": "$3}')
+new_warns=$(comm -13 <(state_get warns_seen | sort) <(print -r -- "$warns" | sort) | grep .)
+state_set warns_seen "$warns"
 last=$(state_get last_notify); [[ "$last" == <-> ]] || last=0
-if [[ "$overall" != ok ]] && { $force || (( $(date +%s) - last >= NOTIFY_INTERVAL_HOURS * 3600 )); }; then
-  if [[ "$overall" == fail ]]; then
-    msg=$(print -r -- "$rows" | awk -F'\t' '$1=="FAIL"{print $2": "$3}')
-    osascript - "$msg" "$HELP_URL" <<'APPLESCRIPT' >/dev/null 2>&1
+if [[ "$overall" == fail ]] && { $force || (( $(date +%s) - last >= NOTIFY_INTERVAL_HOURS * 3600 )); }; then
+  msg=$(print -r -- "$rows" | awk -F'\t' '$1=="FAIL"{print $2": "$3}')
+  osascript - "$msg" "$HELP_URL" <<'APPLESCRIPT' >/dev/null 2>&1
 on run argv
   set msg to item 1 of argv
   set helpUrl to item 2 of argv
@@ -641,12 +644,11 @@ on run argv
   end if
 end run
 APPLESCRIPT
-  else
-    osascript - "$(print -r -- "$todo" | head -1)" <<'APPLESCRIPT' >/dev/null 2>&1
+  state_set last_notify $(date +%s)
+elif [[ -n "$new_warns" ]] || { $force && [[ -n "$warns" ]]; }; then
+  osascript - "$(print -r -- "${new_warns:-$warns}" | head -1)" <<'APPLESCRIPT' >/dev/null 2>&1
 on run argv
   display notification (item 1 of argv) with title "Security check" subtitle "Please take care of it soon"
 end run
 APPLESCRIPT
-  fi
-  state_set last_notify $(date +%s)
 fi

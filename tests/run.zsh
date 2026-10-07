@@ -101,5 +101,24 @@ expect NONE "New autostart entries" TEST_AGENT=com.example.a:RunAtLoad TEST_KNOW
 expect NONE "New autostart entries" TEST_AGENT=com.example.a:RunAtLoad TEST_AGENT=com.example.c:OnDemand TEST_KNOWN=com.example.a
 expect NONE "New autostart entries" TEST_AGENT=com.example.a:RunAtLoad
 
+# notifications in scheduled runs: <expected count after run 1> <after run 2> [VAR=value ...]
+notify() {
+  local want="$1 $2"; shift 2
+  local tmp=$(mktemp -d) got="" i
+  for i in 1 2; do
+    (cd $tmp && env -i HOME=$tmp PATH="$stubs:/usr/bin:/bin:/usr/sbin:/sbin" NOTIFY_LOG=$tmp/notify.log \
+      SOCKETFILTERFW=$stubs/socketfilterfw FAKE_DEFAULTS_FMMEnabled=1 AUTOSTART_DIRS=$tmp/agents "$@" \
+      /bin/zsh $script run --offline >/dev/null 2>&1)
+    got+="$(cat $tmp/notify.log 2>/dev/null | grep -c .) "
+  done
+  rm -rf $tmp
+  if [[ "${got% }" == "$want" ]]; then (( passed++ )); else
+    (( failed++ )); print -r -- "not ok: notifications with ${*:-defaults} should be $want; got: ${got% }"
+  fi
+}
+notify 0 0                                         # healthy device: nothing
+notify 1 1 FAKE_FDESETUP="FileVault is Off."       # failed check: alert, repeated after 20 h only
+notify 1 1 FAKE_FDESETUP="Encryption in progress"  # warning: once, not again while unchanged
+
 print "$passed passed, $failed failed"
 (( failed == 0 ))

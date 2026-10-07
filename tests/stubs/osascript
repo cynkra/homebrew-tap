@@ -1,0 +1,3 @@
+#!/bin/zsh
+# records the message of an alert or notification instead of showing it
+print -r -- "$2" >> "${NOTIFY_LOG:-/dev/null}"
