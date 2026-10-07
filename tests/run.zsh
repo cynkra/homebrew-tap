@@ -111,7 +111,7 @@ notify() {
   local want="$1 $2"; shift 2
   local tmp=$(mktemp -d) got="" i
   for i in 1 2; do
-    (cd $tmp && env -i HOME=$tmp PATH="$stubs:/usr/bin:/bin:/usr/sbin:/sbin" NOTIFY_LOG=$tmp/notify.log \
+    (cd $tmp && env -i HOME=$tmp PATH="$stubs:/usr/bin:/bin:/usr/sbin:/sbin" NOTIFY_LOG=$tmp/notify.log CYNKRA_BASELINE_FORM_URL= \
       SOCKETFILTERFW=$stubs/socketfilterfw FAKE_DEFAULTS_FMMEnabled=1 AUTOSTART_DIRS=$tmp/agents ONEPASSWORD_APP=$tmp "$@" \
       /bin/zsh $script run --offline >/dev/null 2>&1)
     got+="$(cat $tmp/notify.log 2>/dev/null | grep -c .) "
