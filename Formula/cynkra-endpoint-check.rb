@@ -1,8 +1,8 @@
 class CynkraEndpointCheck < Formula
   desc "Read-only security check of Macs used for cynkra work"
   homepage "https://github.com/cynkra/homebrew-tap"
-  url "https://github.com/cynkra/homebrew-tap/archive/refs/tags/v0.3.0.tar.gz"
-  sha256 "29faa032521aec1ce0c3f1f0e3c81d6fe93f2e333525d5c6f0bdcfd884a30e51"
+  url "https://github.com/cynkra/homebrew-tap/archive/refs/tags/v0.3.1.tar.gz"
+  sha256 "3277943a0552611be7d55064aa7c1dc837a8ed84d413611b364f19e3186908b6"
   license "MIT"
 
   depends_on :macos
