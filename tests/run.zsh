@@ -106,10 +106,15 @@ expect NONE "New autostart entries" TEST_AGENT=com.example.a:RunAtLoad
 expect PASS 1Password
 expect FAIL 1Password ONEPASSWORD_APP=/nonexistent
 
+expect WARN Owner
+expect PASS Owner TEST_FILE="Library/Application Support/cynkra-baseline-check/owner:jannes@cynkra.com"
+
 # notifications in scheduled runs: <expected count after run 1> <after run 2> [VAR=value ...]
 notify() {
   local want="$1 $2"; shift 2
   local tmp=$(mktemp -d) got="" i
+  mkdir -p "$tmp/Library/Application Support/cynkra-baseline-check"
+  print jannes@cynkra.com > "$tmp/Library/Application Support/cynkra-baseline-check/owner"
   for i in 1 2; do
     (cd $tmp && env -i HOME=$tmp PATH="$stubs:/usr/bin:/bin:/usr/sbin:/sbin" NOTIFY_LOG=$tmp/notify.log CYNKRA_BASELINE_FORM_URL= \
       SOCKETFILTERFW=$stubs/socketfilterfw FAKE_DEFAULTS_FMMEnabled=1 AUTOSTART_DIRS=$tmp/agents ONEPASSWORD_APP=$tmp "$@" \

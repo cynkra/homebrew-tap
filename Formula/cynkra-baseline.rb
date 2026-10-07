@@ -22,6 +22,15 @@ class CynkraBaseline < Formula
     error_log_path var/"log/cynkra-baseline.log"
   end
 
+  def caveats
+    <<~EOS
+      Set up once, with your cynkra address:
+        cynkra-baseline owner name@cynkra.com
+        brew services start cynkra-baseline
+      Show the result now: cynkra-baseline check
+    EOS
+  end
+
   test do
     assert_match "Usage", shell_output("#{bin}/cynkra-baseline owner invalid 2>&1", 2)
   end
