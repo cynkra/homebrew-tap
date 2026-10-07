@@ -41,7 +41,7 @@ ENTRY_DETAILS="entry.1664793652"
 ENTRY_SCRIPT_VERSION="entry.945629687"
 HELP_URL=""             # optional: guide offered in the alert
 
-SCRIPT_VERSION="0.2.4"
+SCRIPT_VERSION="0.2.5"
 LABEL="ch.cynkra.baseline-check"
 APP_DIR="$HOME/Library/Application Support/cynkra-baseline-check"
 INSTALLED_SCRIPT="$APP_DIR/macos-baseline-check.sh"
@@ -392,15 +392,25 @@ elif command -v syft >/dev/null && command -v osv-scanner >/dev/null; then
   targets=() kinds=()
   add() { [[ -d "$2" ]] && { targets+=("$2"); kinds+=("$1"); } }
   command -v brew >/dev/null && add brew "$(brew --prefix)"
-  if command -v Rscript >/dev/null; then
-    for l in ${(f)"$(Rscript -e 'cat(.libPaths(), sep = "\n")' 2>/dev/null)"}; do add user "$l"; done
-  fi
-  if command -v python3 >/dev/null; then
-    for l in ${(f)"$(python3 -c 'import site; print("\n".join(site.getsitepackages() + [site.getusersitepackages()]))' 2>/dev/null)"}; do add user "$l"; done
-  fi
+  # All R and Python installations in the usual places, not only the first on PATH:
+  # R from CRAN/rig and Homebrew, user libraries; Python from Homebrew, python.org, the user
+  # site, pyenv, uv, pipx and conda. Virtual environments inside projects are not searched.
+  for l in /Library/Frameworks/R.framework/Versions/*/Resources/library(N/) ~/Library/R/*/*/library(N/) \
+           /opt/homebrew/lib/R/*/site-library(N/) \
+           /opt/homebrew/lib/python3.*/site-packages(N/) \
+           /Library/Frameworks/Python.framework/Versions/*/lib/python3.*/site-packages(N/) \
+           ~/Library/Python/*/lib/python/site-packages(N/) \
+           ~/.pyenv/versions/*/lib/python3.*/site-packages(N/) \
+           ~/.local/share/uv/{tools,python}/*/lib/python3.*/site-packages(N/) \
+           ~/.local/pipx/venvs/*/lib/python3.*/site-packages(N/) \
+           ~/{miniforge3,mambaforge,miniconda3,anaconda3}{,/envs/*}/lib/python3.*/site-packages(N/) \
+           ~/.nvm/versions/node/*/lib/node_modules(N/); do
+    add user "$l"
+  done
   command -v npm >/dev/null && add user "$(npm root -g 2>/dev/null)"
   for (( i = 1; i <= ${#targets}; i++ )); do
     print -r -- "${kinds[i]}" > "$tmp/$i.kind"
+    print -r -- "${targets[i]/#$HOME/~}" > "$tmp/$i.target"
     # Library/Taps holds the formula catalogues of Homebrew taps, not installed software
     syft scan "dir:${targets[i]}" -q --exclude './Library/Taps/**' -o syft-json > "$tmp/$i.json" 2>/dev/null
   done
@@ -411,6 +421,7 @@ keep = ("pkg:brew/", "pkg:cran/", "pkg:pypi/", "pkg:npm/", "pkg:gem/")
 seen, components, where, unknown, known = set(), [], {}, set(), set()
 for f in sorted(glob.glob(d + "/*.json")):
     kind = open(f[:-5] + ".kind").read().strip()
+    target = open(f[:-5] + ".target").read().strip()
     for a in json.load(open(f)).get("artifacts", []):
         purl = (a.get("purl") or "").split("?")[0]
         if not purl.startswith(keep):
@@ -425,7 +436,16 @@ for f in sorted(glob.glob(d + "/*.json")):
         known.add(base)
         key = (a["name"].lower(), a["version"])
         managed = kind == "user" or (kind == "brew" and purl.startswith("pkg:brew/"))
-        where.setdefault(key, set()).add("user" if managed else "bundled")
+        if managed:
+            where.setdefault(key, set()).update({"user", "at:" + target})
+        else:
+            # bundled inside a Homebrew formula or cask: name it from the Cellar/Caskroom path
+            for loc in a.get("locations", []):
+                parts = loc.get("path", "").strip("/").split("/")
+                for anchor in ("Cellar", "Caskroom"):
+                    if anchor in parts and parts.index(anchor) + 1 < len(parts):
+                        where.setdefault(key, set()).add("brew:" + parts[parts.index(anchor) + 1])
+            where.setdefault(key, set()).add("bundled")
         if purl not in seen:
             seen.add(purl)
             components.append({"type": "library", "name": a["name"], "version": a["version"], "purl": purl})
@@ -454,6 +474,12 @@ for r in results:
         loc = where.get(f"{pkg['name'].lower()}\t{pkg['version']}", [])
         entry = {"ecosystem": pkg["ecosystem"], "name": pkg["name"], "version": pkg["version"],
                  "ids": ids[:10], "advisories": len(ids), "max_severity": max((g.get("max_severity") or "" for g in p.get("groups", [])), default="")}
+        formulas = sorted(l[5:] for l in loc if l.startswith("brew:"))
+        if formulas:
+            entry["formulas"] = formulas
+        dirs = sorted(l[3:] for l in loc if l.startswith("at:"))
+        if dirs:
+            entry["where"] = dirs
         if any(i.startswith("MAL-") for i in ids):
             out["malicious"].append(entry)
         elif fixed and "user" in loc:
@@ -471,13 +497,36 @@ PY
     result PASS "Malicious packages" "none"
   fi
   if (( fix )); then
-    result WARN "Vulnerable packages" "$fix fixable (see .json report; update within 14 days: brew update && brew upgrade -y --greedy, update.packages())"
+    # where they are, so that it is clear which installation to update or remove
+    fix_where=$(print -r -- "$findings" | python3 -c '
+import collections, json, sys
+per = collections.Counter(w for e in json.load(sys.stdin)["fixable"] for w in e.get("where", ["?"]))
+print(", ".join(f"{w} {n}" for w, n in per.most_common(6)) + (f", {len(per) - 6} more" if len(per) > 6 else ""))')
+    result WARN "Vulnerable packages" "$fix fixable in $fix_where (update within 14 days, or remove installations you no longer use; details in the .json report)"
   else
     result PASS "Vulnerable packages" "none fixable"
   fi
   unk=$(print -r -- "$findings" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)["version_unknown"]))')
   (( unk )) && result INFO "Version unknown" "$unk packages could not be checked (listed in the .json report)"
-  (( oth )) && result INFO "Other advisories" "$oth in bundled packages or without fix (brew update && brew upgrade -y --greedy)"
+  if (( oth )); then
+    # Packages bundled in Homebrew formulas are updated by the formula maintainers, not by
+    # brew upgrade; the only lever is removing tools that are not needed. Summarised per formula.
+    adv_summary=$(print -r -- "$findings" | python3 -c '
+import collections, json, sys
+other = json.load(sys.stdin)["other"]
+per = collections.Counter(f for e in other for f in e.get("formulas", []))
+rest = sum(1 for e in other if not e.get("formulas"))
+parts = [f"{f} {n}" for f, n in per.most_common(8)]
+if len(per) > 8:
+    parts.append(f"{len(per) - 8} more formulas")
+line = ""
+if parts:
+    line = "in Homebrew formulas: " + ", ".join(parts) + " (fixed when the formula is updated; uninstall tools you do not use)"
+if rest:
+    line += ("; " if line else "") + f"{rest} without a fix yet"
+print(line)')
+    result INFO "Other advisories" "$oth advisories, nothing to do now: $adv_summary"
+  fi
 else
   result WARN "Vulnerability check" "needs syft and osv-scanner (brew install syft osv-scanner)"
 fi
