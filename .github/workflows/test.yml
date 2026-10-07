@@ -40,6 +40,6 @@ jobs:
       - name: Formula
         run: |
           brew tap cynkra/tap "$GITHUB_WORKSPACE"
-          brew audit --strict cynkra/tap/cynkra-baseline
-          brew install cynkra/tap/cynkra-baseline
-          brew test cynkra/tap/cynkra-baseline
+          brew audit --strict cynkra/tap/cynkra-endpoint-check
+          brew install cynkra/tap/cynkra-endpoint-check
+          brew test cynkra/tap/cynkra-endpoint-check

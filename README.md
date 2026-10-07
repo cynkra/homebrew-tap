@@ -2,7 +2,7 @@
 
 Tools cynkra employees install on their devices.
 
-## cynkra-baseline
+## cynkra-endpoint-check
 
 Read-only check of the security baseline of a Mac (FileVault, firewall, updates, screen lock, sudo, SSH keys, Find My Mac, vulnerable developer packages and more), as required by cynkra's endpoint policy.
 It changes nothing on the device and needs no admin rights.
@@ -10,20 +10,20 @@ It changes nothing on the device and needs no admin rights.
 Set up in three steps; all three are needed:
 
 ```sh
-brew install cynkra/tap/cynkra-baseline
-cynkra-baseline owner name@cynkra.com  # your cynkra address, e.g. jannes@cynkra.com; without it reports are anonymous
-brew services start cynkra-baseline    # runs at login and once a day, reports to the central overview
+brew install cynkra/tap/cynkra-endpoint-check
+cynkra-endpoint-check owner name@cynkra.com  # your cynkra address, e.g. jannes@cynkra.com; without it reports are anonymous
+brew services start cynkra-endpoint-check    # runs at login and once a day, reports to the central overview
 ```
 
 Show the result at any time:
 
 ```sh
-cynkra-baseline check                  # about 2 min with the vulnerability scan
-cynkra-baseline check --offline        # quick check without network, about 1 s
+cynkra-endpoint-check check                  # about 2 min with the vulnerability scan
+cynkra-endpoint-check check --offline        # quick check without network, about 1 s
 ```
 
 Updates arrive with `brew upgrade`.
-Remove with `brew services stop cynkra-baseline && brew uninstall cynkra-baseline`.
+Remove with `brew services stop cynkra-endpoint-check && brew uninstall cynkra-endpoint-check`.
 
 What the check reports: the status of each check and the findings; no software list, files or browsing history leave the device. Plaintext credentials are reported by file and variable name only, never the value.
 
