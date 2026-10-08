@@ -41,7 +41,7 @@ ENTRY_DETAILS="entry.1302829151"
 ENTRY_SCRIPT_VERSION="entry.1572118900"
 HELP_URL=""             # optional: guide offered in the alert
 
-SCRIPT_VERSION="0.3.1"
+SCRIPT_VERSION="0.3.2"
 LABEL="ch.cynkra.endpoint-check"
 APP_DIR="$HOME/Library/Application Support/cynkra-endpoint-check"
 OLD_APP_DIR="$HOME/Library/Application Support/cynkra-baseline-check"  # before 0.3.0
@@ -625,6 +625,8 @@ todo=$(print -r -- "$rows" | awk -F'\t' '$1=="FAIL"||$1=="WARN"{print $2": "($4!
 log "status $overall; ${(j:; :)${(f)todo}}"
 
 last=$(state_get last_report); [[ "$last" == <-> ]] || last=0
+# Only devices registered to a cynkra address report; anyone else using the public tap sends nothing
+[[ "$(state_get owner)" == ?*@cynkra.com ]] || FORM_URL=""
 if [[ -n "$FORM_URL" ]] && { $force || [[ "$overall" != "$(state_get last_status)" ]] || \
      (( $(date +%s) - last >= REPORT_INTERVAL_HOURS * 3600 )); }; then
   model=$(sysctl -n hw.model)

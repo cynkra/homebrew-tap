@@ -26,7 +26,7 @@ cynkra-endpoint-check check --offline        # quick check without network, abou
 Updates arrive with `brew upgrade`.
 Remove with `brew services stop cynkra-endpoint-check && brew uninstall cynkra-endpoint-check`.
 
-What the check reports: the status of each check and the findings; no software list, files or browsing history leave the device. Plaintext credentials are reported by file and variable name only, never the value.
+What leaves the device: only devices registered with an `@cynkra.com` owner send a short status (status per check, counts, script version) to cynkra's overview once a day; anyone else using this tap sends nothing. No software list, files or browsing history leave the device, and plaintext credentials are reported as a count only (file and variable names stay in the local report).
 
 ## Security of this tap
 
