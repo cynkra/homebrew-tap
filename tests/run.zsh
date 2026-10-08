@@ -148,5 +148,20 @@ report_attempt no
 report_attempt no someone@example.com
 report_attempt yes jannes@cynkra.com
 
+# help and version do not run the check; unknown input fails
+cli() {  # cli <expected exit> <expected text> args...
+  local want_rc=$1 want=$2; shift 2
+  local out rc
+  out=$(env -i HOME=/tmp PATH="$stubs:/usr/bin:/bin:/usr/sbin:/sbin" /bin/zsh $script "$@" 2>&1); rc=$?
+  if [[ $rc == $want_rc && "$out" == *"$want"* && "$out" != *"checking"* ]]; then (( passed++ )); else
+    (( failed++ )); print -r -- "not ok: '$*' should exit $want_rc with '$want'; got $rc: ${out[1,80]}"; fi
+}
+cli 0 "Usage:" --help
+cli 0 "Usage:" -h
+cli 0 "Usage:" check --help
+cli 0 "cynkra-endpoint-check 0." --version
+cli 2 "Unknown command" foo
+cli 2 "Unknown option" check --bogus
+
 print "$passed passed, $failed failed"
 (( failed == 0 ))
