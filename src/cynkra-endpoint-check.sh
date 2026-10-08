@@ -3,8 +3,10 @@
 # Read-only: changes nothing, needs no admin rights.
 # Side effect: clears your cached sudo credentials (sudo -k) to test for passwordless sudo.
 # Needs syft and osv-scanner (brew install syft osv-scanner) for the vulnerability check.
-# The software inventory stays on the device; the reports list security settings, autostart
-# entries, container images and vulnerability findings; review them before submitting.
+# The software inventory stays on the device. The local report lists security settings, autostart
+# entries, container images and vulnerability findings; the central report (run, registered
+# owners only) gets only the status per check and summaries without names of files, keys,
+# variables, apps, containers or extensions.
 # Usage:
 #   cynkra-endpoint-check.sh [check] [--offline] [--json]
 #                                                 show the result (--json: as JSON), write no
@@ -42,7 +44,7 @@ ENTRY_DETAILS="entry.1302829151"
 ENTRY_SCRIPT_VERSION="entry.1572118900"
 HELP_URL=""             # optional: guide offered in the alert
 
-SCRIPT_VERSION="0.3.4"
+SCRIPT_VERSION="0.3.5"
 LABEL="ch.cynkra.endpoint-check"
 APP_DIR="$HOME/Library/Application Support/cynkra-endpoint-check"
 OLD_APP_DIR="$HOME/Library/Application Support/cynkra-baseline-check"  # before 0.3.0
@@ -269,40 +271,44 @@ for f in ~/.ssh/*(N.); do
   ssh-keygen -y -P "" -f "$f" >/dev/null 2>&1 && unencrypted+=("${f:t}")
 done
 if (( ${#unencrypted} )); then
-  result WARN "SSH keys" "without passphrase: ${(j:, :)unencrypted} (ssh-keygen -p -f ~/.ssh/<key>, or move them to 1Password)"
+  result WARN "SSH keys" "without passphrase: ${(j:, :)unencrypted} (ssh-keygen -p -f ~/.ssh/<key>, or move them to 1Password)" \
+    "${#unencrypted} without passphrase"
 else
   result PASS "SSH keys" "no unencrypted private keys in ~/.ssh"
 fi
 
-# Plaintext credentials (warning only, rule introduced in stages): reports file and variable
-# names, never values. Values read from 1Password ($(op read ...)), other variables, paths
-# and empty values are not reported.
+# Plaintext credentials (warning only, rule introduced in stages): reads only the files listed
+# here and reports file and variable names locally, never values; the central report only says
+# that something was found. Values read from 1Password ($(op read ...)), other variables, paths
+# and empty values are not reported. False positives go into the ignore list, one variable
+# name or file path (~/...) per line.
+ignore_file="$APP_DIR/plaintext-ignore"
+ignored=(${(f)"$(sed -E 's/#.*//; s/^[[:space:]]+//; s/[[:space:]]+$//' "$ignore_file" 2>/dev/null)"})
+ignored=(${ignored/#$HOME/~})
 plain=()
-[[ -f ~/.netrc ]] && grep -qE '(^|[[:space:]])password[[:space:]]' ~/.netrc && plain+=("~/.netrc")
-[[ -s ~/.git-credentials ]] && plain+=("~/.git-credentials")
-[[ -f ~/.aws/credentials ]] && grep -q 'aws_secret_access_key' ~/.aws/credentials && plain+=("~/.aws/credentials")
-[[ -f ~/.npmrc ]] && grep -q '_authToken=' ~/.npmrc && plain+=("~/.npmrc")
-[[ -f ~/.pypirc ]] && grep -qE '^[[:space:]]*password' ~/.pypirc && plain+=("~/.pypirc")
-[[ -f ~/.config/gh/hosts.yml ]] && grep -q 'oauth_token:' ~/.config/gh/hosts.yml && plain+=("~/.config/gh/hosts.yml")
+plain_add() { (( ${ignored[(Ie)$1]} )) || plain+=("$1"); }
+[[ -f ~/.netrc ]] && grep -qE '(^|[[:space:]])password[[:space:]]' ~/.netrc && plain_add "~/.netrc"
+[[ -s ~/.git-credentials ]] && plain_add "~/.git-credentials"
+[[ -f ~/.aws/credentials ]] && grep -q 'aws_secret_access_key' ~/.aws/credentials && plain_add "~/.aws/credentials"
+[[ -f ~/.npmrc ]] && grep -q '_authToken=' ~/.npmrc && plain_add "~/.npmrc"
+[[ -f ~/.pypirc ]] && grep -qE '^[[:space:]]*password' ~/.pypirc && plain_add "~/.pypirc"
+[[ -f ~/.config/gh/hosts.yml ]] && grep -q 'oauth_token:' ~/.config/gh/hosts.yml && plain_add "~/.config/gh/hosts.yml"
 [[ -f ~/.docker/config.json ]] && python3 -c '
 import json, os, sys
 d = json.load(open(os.path.expanduser("~/.docker/config.json")))
 sys.exit(0 if not d.get("credsStore") and any(v.get("auth") for v in d.get("auths", {}).values()) else 1)' 2>/dev/null \
-  && plain+=("~/.docker/config.json")
-for f in ~/.zshrc ~/.zprofile ~/.zshenv ~/.zlogin ~/.bash_profile ~/.bashrc ~/.profile ~/.Renviron ~/.*secret*(N.); do
-  [[ -f $f ]] || continue
+  && plain_add "~/.docker/config.json"
+for f in ~/.zshrc ~/.zprofile ~/.zshenv ~/.zlogin ~/.bash_profile ~/.bashrc ~/.profile ~/.Renviron; do
+  [[ -f $f ]] && (( ! ${ignored[(Ie)${f/#$HOME/~}]} )) || continue
   vars=$(grep -E '^[[:space:]]*(export[[:space:]]+)?[A-Za-z_][A-Za-z0-9_]*(TOKEN|SECRET|PASSWORD|PASSWD|API_KEY|APIKEY|_PAT|_KEY)[A-Za-z0-9_]*=' "$f" \
     | grep -vE '=[[:space:]]*["'"'"']?([$`/~]|$)' \
     | sed -E 's/^[[:space:]]*(export[[:space:]]+)?([A-Za-z0-9_]+)=.*/\2/' | sort -u)
-  [[ -n "$vars" ]] && plain+=("${f/#$HOME/~}: ${(j:, :)${(f)vars}}")
+  vars=(${(f)vars}); vars=(${vars:|ignored})
+  (( ${#vars} )) && plain+=("${f/#$HOME/~}: ${(j:, :)vars}")
 done
 if (( ${#plain} )); then
-  entries=0
-  for p in $plain; do
-    if [[ "$p" == *": "* ]]; then names=("${(@s:, :)${p#*: }}"); (( entries += ${#names} )); else (( entries++ )); fi
-  done
-  result WARN "Plaintext credentials" "${(j:; :)plain} (move to 1Password: op read / op run, gh auth login, aws sso login)" \
-    "$entries in ${#plain} files (names: cynkra-endpoint-check check)"
+  result WARN "Plaintext credentials" "${(j:; :)plain} (move to 1Password: op read / op run, gh auth login, aws sso login; false positive? add the name to ${ignore_file/#$HOME/~})" \
+    "found (names: cynkra-endpoint-check check)"
 else
   result PASS "Plaintext credentials" "none found in the usual places"
 fi
@@ -347,7 +353,8 @@ if $in_vm; then
   # No AI extensions in VS Code: customer contracts allow AI only through the customer's tools
   ai=$(ls -1 ~/.vscode/extensions 2>/dev/null | grep -iE '^(github\.copilot|continue\.|codeium\.|saoudrizwan\.claude-dev|anthropic\.|tabnine\.|amazonwebservices\.amazon-q|sourcegraph\.cody|rooveterinaryinc\.|kilocode\.)' | sed -E 's/-[0-9][^-]*$//' | sort -u)
   if [[ -n "$ai" ]]; then
-    result FAIL "AI extensions" "${(j:, :)${(f)ai}} (remove; only the customer's AI tools are allowed)"
+    result FAIL "AI extensions" "${(j:, :)${(f)ai}} (remove; only the customer's AI tools are allowed)" \
+      "$(print -r -- "$ai" | grep -c .) installed"
   else
     result PASS "AI extensions" "none in VS Code"
   fi
@@ -411,7 +418,8 @@ for cli in docker podman; do
   container_images+="$imgs"$'\n'
   open_ports=$($cli ps --format '{{.Names}} {{.Ports}}' 2>/dev/null | grep -E '0\.0\.0\.0:|\[::\]:|:::' )
   if [[ -n "$open_ports" ]]; then
-    result WARN "Container ports ($cli)" "published to all interfaces: ${(j:; :)${(f)open_ports}} (use -p 127.0.0.1:…)"
+    result WARN "Container ports ($cli)" "published to all interfaces: ${(j:; :)${(f)open_ports}} (use -p 127.0.0.1:…)" \
+      "$(print -r -- "$open_ports" | grep -c .) containers published to all interfaces"
   else
     result PASS "Container ports ($cli)" "none published to all interfaces"
   fi
@@ -443,7 +451,9 @@ known=$(state_get autostart_known)
 if [[ -n "$known" ]]; then
   new=$(comm -13 <(print -r -- "$known") <(print -r -- "$autostart") | grep .)
   if [[ -n "$new" ]]; then
-    result WARN "New autostart entries" "${(j:, :)${(f)new}} (since the last check; turn off if not needed)"
+    # names: run records them as known, so a later check no longer lists them; last-report.txt keeps them
+    result WARN "New autostart entries" "${(j:, :)${(f)new}} (since the last check; turn off if not needed)" \
+      "$(print -r -- "$new" | grep -c .) new (names: ${APP_DIR/#$HOME/~}/last-report.txt)"
   fi
 fi
 state_set autostart_known "$autostart"
@@ -661,7 +671,10 @@ json_report > "$out.json"
 overall=ok
 print -r -- "$rows" | grep -q '^WARN' && overall=warn
 (( fails )) && overall=fail
-todo=$(print -r -- "$rows" | awk -F'\t' '$1=="FAIL"||$1=="WARN"{print $2": "($4!=""?$4:$3)}')
+# Local log: full details. Central report: the check name and its summary only, never the
+# detail, which can contain names of files, keys, variables, apps, containers or extensions
+todo=$(print -r -- "$rows" | awk -F'\t' '$1=="FAIL"||$1=="WARN"{print $2": "$3}')
+sent=$(print -r -- "$rows" | awk -F'\t' '$1=="FAIL"||$1=="WARN"{print $2($4!=""?": "$4:"")}')
 log "status $overall; ${(j:; :)${(f)todo}}"
 
 last=$(state_get last_report); [[ "$last" == <-> ]] || last=0
@@ -676,7 +689,7 @@ if [[ -n "$FORM_URL" ]] && { $force || [[ "$overall" != "$(state_get last_status
     --data-urlencode "$ENTRY_MODEL=$model" \
     --data-urlencode "$ENTRY_OS_VERSION=$(sw_vers -productVersion)" \
     --data-urlencode "$ENTRY_STATUS=$overall" \
-    --data-urlencode "$ENTRY_DETAILS=${(j:; :)${(f)todo}}" \
+    --data-urlencode "$ENTRY_DETAILS=${(j:; :)${(f)sent}}" \
     --data-urlencode "$ENTRY_SCRIPT_VERSION=$SCRIPT_VERSION") || code=000
   if [[ "$code" == 200 ]]; then
     state_set last_report $(date +%s); state_set last_status $overall; log "report sent ($overall)"

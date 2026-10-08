@@ -1,0 +1,4 @@
+#!/bin/zsh
+# records the request instead of sending it and answers like the form
+print -r -- "$*" >> "${CURL_LOG:-/dev/null}"
+print -n 200
