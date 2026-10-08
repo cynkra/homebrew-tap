@@ -148,6 +148,22 @@ report_attempt no
 report_attempt no someone@example.com
 report_attempt yes jannes@cynkra.com
 
+# check writes no files to the current directory; --json prints valid JSON instead of the text report
+no_files() {
+  local tmp=$(mktemp -d) work out
+  work=$tmp/work; mkdir -p $work
+  run_check() { (cd $work && env -i HOME=$tmp PATH="$stubs:/usr/bin:/bin:/usr/sbin:/sbin" SOCKETFILTERFW=$stubs/socketfilterfw \
+    FAKE_DEFAULTS_FMMEnabled=1 AUTOSTART_DIRS=$tmp/agents ONEPASSWORD_APP=$tmp /bin/zsh $script check --offline "$@" 2>/dev/null) }
+  run_check >/dev/null
+  out=$(run_check --json)
+  if [[ -z "$(ls -A $work)" ]]; then (( passed++ )); else
+    (( failed++ )); print -r -- "not ok: check wrote files: $(ls -A $work)"; fi
+  if print -r -- "$out" | python3 -c 'import json, sys; d = json.load(sys.stdin); assert "FileVault" in {c["check"] for c in d["checks"]}' 2>/dev/null; then
+    (( passed++ )); else (( failed++ )); print -r -- "not ok: check --json should print the JSON report; got: ${out[1,80]}"; fi
+  rm -rf $tmp
+}
+no_files
+
 # help and version do not run the check; unknown input fails
 cli() {  # cli <expected exit> <expected text> args...
   local want_rc=$1 want=$2; shift 2

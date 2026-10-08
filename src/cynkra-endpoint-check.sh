@@ -6,8 +6,9 @@
 # The software inventory stays on the device; the reports list security settings, autostart
 # entries, container images and vulnerability findings; review them before submitting.
 # Usage:
-#   cynkra-endpoint-check.sh [check] [--offline]   show the result, write .txt/.json to the
-#                                                 current directory, send nothing (default)
+#   cynkra-endpoint-check.sh [check] [--offline] [--json]
+#                                                 show the result (--json: as JSON), write no
+#                                                 files, send nothing (default)
 #   cynkra-endpoint-check.sh install <name@cynkra.com>
 #                                                 install; runs at login and once a day
 #   cynkra-endpoint-check.sh owner <name@cynkra.com>
@@ -41,7 +42,7 @@ ENTRY_DETAILS="entry.1302829151"
 ENTRY_SCRIPT_VERSION="entry.1572118900"
 HELP_URL=""             # optional: guide offered in the alert
 
-SCRIPT_VERSION="0.3.3"
+SCRIPT_VERSION="0.3.4"
 LABEL="ch.cynkra.endpoint-check"
 APP_DIR="$HOME/Library/Application Support/cynkra-endpoint-check"
 OLD_APP_DIR="$HOME/Library/Application Support/cynkra-baseline-check"  # before 0.3.0
@@ -60,9 +61,11 @@ usage() {
 cynkra-endpoint-check $SCRIPT_VERSION: read-only security check of this Mac (changes nothing, needs no admin rights)
 
 Usage:
-  cynkra-endpoint-check [check] [--offline]    show the result now; writes .txt/.json to the current
-                                               directory and sends nothing; --offline skips the steps
-                                               that need the network (outdated packages, vulnerabilities)
+  cynkra-endpoint-check [check] [--offline] [--json]
+                                               show the result now; writes no files and sends nothing;
+                                               --offline skips the steps that need the network (outdated
+                                               packages, vulnerabilities); --json prints the full report
+                                               as JSON (save it with > report.json)
   cynkra-endpoint-check owner name@cynkra.com  register this Mac to you; only registered Macs report
   cynkra-endpoint-check run [--force]          check, report to cynkra, notify (what the background
                                                service runs once a day)
@@ -73,7 +76,7 @@ More: https://github.com/cynkra/homebrew-tap
 USAGE
 }
 
-cmd=check force=false offline=false
+cmd=check force=false offline=false json=false
 case "$1" in
   -h|--help|help) usage; exit 0 ;;
   -V|--version|version) print -r -- "cynkra-endpoint-check $SCRIPT_VERSION"; exit 0 ;;
@@ -86,6 +89,7 @@ if [[ "$cmd" == (check|run) ]]; then
     case "$a" in
       --offline) offline=true ;;
       --force) force=true ;;
+      --json) json=true ;;
       -h|--help) usage; exit 0 ;;
       *) print -u2 -r -- "Unknown option: $a"; usage >&2; exit 2 ;;
     esac
@@ -411,7 +415,7 @@ for cli in docker podman; do
   else
     result PASS "Container ports ($cli)" "none published to all interfaces"
   fi
-  result INFO "Container images ($cli)" "$(print -r -- "$imgs" | grep -c .) images (listed in the .json report)"
+  result INFO "Container images ($cli)" "$(print -r -- "$imgs" | grep -c .) images (listed by check --json)"
 done
 
 # Autostart entries: launchd jobs are where macOS malware typically persists. Counted are only
@@ -443,7 +447,7 @@ if [[ -n "$known" ]]; then
   fi
 fi
 state_set autostart_known "$autostart"
-result INFO "Autostart entries" "$(print -r -- "$autostart" | grep -c .) start by themselves (listed in the .json report)"
+result INFO "Autostart entries" "$(print -r -- "$autostart" | grep -c .) start by themselves (listed by check --json)"
 
 # Vulnerability check, entirely on the device: syft builds a software inventory (SBOM) of
 # developer tooling (Homebrew, R libraries, Python site-packages, global npm packages),
@@ -568,7 +572,7 @@ PY
   rm -rf "$tmp"
   read mal fix oth <<< "$(print -r -- "$findings" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(len(d["malicious"]), len(d["fixable"]), len(d["other"]))')"
   if (( mal )); then
-    result FAIL "Malicious packages" "$mal (see .json report; remove immediately and inform the CISO)"
+    result FAIL "Malicious packages" "$mal (listed by check --json; remove immediately and inform the CISO)"
   else
     result PASS "Malicious packages" "none"
   fi
@@ -578,13 +582,13 @@ PY
 import collections, json, sys
 per = collections.Counter(w for e in json.load(sys.stdin)["fixable"] for w in e.get("where", ["?"]))
 print(", ".join(f"{w} {n}" for w, n in per.most_common(6)) + (f", {len(per) - 6} more" if len(per) > 6 else ""))')
-    result WARN "Vulnerable packages" "$fix fixable in $fix_where (update within 14 days, or remove installations you no longer use; details in the .json report)" \
+    result WARN "Vulnerable packages" "$fix fixable in $fix_where (update within 14 days, or remove installations you no longer use; details: check --json)" \
       "$fix fixable (details: cynkra-endpoint-check check)"
   else
     result PASS "Vulnerable packages" "none fixable"
   fi
   unk=$(print -r -- "$findings" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)["version_unknown"]))')
-  (( unk )) && result INFO "Version unknown" "$unk packages could not be checked (listed in the .json report)"
+  (( unk )) && result INFO "Version unknown" "$unk packages could not be checked (listed by check --json)"
   if (( oth )); then
     # Packages bundled in Homebrew formulas are updated by the formula maintainers, not by
     # brew upgrade; the only lever is removing tools that are not needed. Summarised per formula.
@@ -619,18 +623,8 @@ macOS:    $(sw_vers -productVersion) ($(sw_vers -buildVersion))$($in_vm && echo 
 "
 summary=$([[ $fails -eq 0 ]] && echo "Result: all checks passed" || echo "Result: $fails check(s) failed")
 
-if [[ "$cmd" == run ]]; then
-  mkdir -p "$APP_DIR"; out="$APP_DIR/last-report"
-else
-  out="endpoint-check-$host-$(date +%Y-%m-%d)"
-fi
-if [[ "$cmd" == run && ! -t 1 ]]; then  # scheduled run: log line only; in a terminal show the full report too
-  printf "%s\n%s\n%s\n" "$header" "$report" "$summary" > "$out.txt"
-else
-  printf "%s\n%s\n%s\n" "$header" "$report" "$summary" | tee "$out.txt"
-fi
-
-printf "%s" "$rows" | python3 -c '
+json_report() {
+  printf "%s" "$rows" | python3 -c '
 import json, sys
 user, host, serial, macos, date, fails, autostart, images, findings = sys.argv[1:10]
 checks = [{k: v for k, v in zip(["status", "check", "detail", "summary"], l.split("\t", 3)) if v}
@@ -641,12 +635,27 @@ json.dump({"date": date, "user": user, "host": host, "device_id": serial,
            "container_images": [l for l in images.splitlines() if l],
            "findings": json.loads(findings) if findings else None},
           sys.stdout, indent=2, ensure_ascii=False)
-' "$(id -un)" "$host" "$serial" "$(sw_vers -productVersion)" "$(date '+%Y-%m-%dT%H:%M')" "$fails" "$autostart" "$container_images" "$findings" > "$out.json"
+' "$(id -un)" "$host" "$serial" "$(sw_vers -productVersion)" "$(date '+%Y-%m-%dT%H:%M')" "$fails" "$autostart" "$container_images" "$findings"
+}
 
+# Manual check: print only, write no files
 if [[ "$cmd" == check ]]; then
-  echo "Reports saved in $PWD: $out.txt, $out.json"
+  if $json; then
+    json_report; echo
+  else
+    printf "%s\n%s\n%s\n" "$header" "$report" "$summary"
+  fi
   exit 0
 fi
+
+# Scheduled run: keep the last report in the app directory
+mkdir -p "$APP_DIR"; out="$APP_DIR/last-report"
+if [[ ! -t 1 ]]; then  # log line only; in a terminal show the full report too
+  printf "%s\n%s\n%s\n" "$header" "$report" "$summary" > "$out.txt"
+else
+  printf "%s\n%s\n%s\n" "$header" "$report" "$summary" | tee "$out.txt"
+fi
+json_report > "$out.json"
 
 # Scheduled run: report to the central overview and notify the person if something is to do
 overall=ok

@@ -23,11 +23,10 @@ jobs:
       - name: Real run on the runner (offline checks)
         run: |
           mkdir -p "$RUNNER_TEMP/run" && cd "$RUNNER_TEMP/run"
-          zsh "$GITHUB_WORKSPACE/src/cynkra-endpoint-check.sh" check --offline || true
+          zsh "$GITHUB_WORKSPACE/src/cynkra-endpoint-check.sh" check --offline --json > report.json || true
           python3 - <<'PY'
-          import glob, json
-          (report,) = glob.glob("endpoint-check-*.json")
-          d = json.load(open(report))
+          import json
+          d = json.load(open("report.json"))
           for key in ("date", "user", "host", "device_id", "macos", "failed", "checks"):
               assert key in d, key
           names = {c["check"] for c in d["checks"]}
