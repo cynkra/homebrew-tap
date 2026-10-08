@@ -21,7 +21,10 @@ Show the result at any time:
 ```sh
 cynkra-endpoint-check check                  # about 2 min with the vulnerability scan
 cynkra-endpoint-check check --offline        # quick check without network, about 1 s
+cynkra-endpoint-check check --json           # full report as JSON, e.g. > report.json
 ```
+
+`check` only prints; it writes no report files.
 
 Updates arrive with `brew upgrade`.
 Remove with `brew services stop cynkra-endpoint-check && brew uninstall cynkra-endpoint-check`.
