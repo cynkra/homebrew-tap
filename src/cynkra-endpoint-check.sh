@@ -41,7 +41,7 @@ ENTRY_DETAILS="entry.1302829151"
 ENTRY_SCRIPT_VERSION="entry.1572118900"
 HELP_URL=""             # optional: guide offered in the alert
 
-SCRIPT_VERSION="0.3.2"
+SCRIPT_VERSION="0.3.3"
 LABEL="ch.cynkra.endpoint-check"
 APP_DIR="$HOME/Library/Application Support/cynkra-endpoint-check"
 OLD_APP_DIR="$HOME/Library/Application Support/cynkra-baseline-check"  # before 0.3.0
@@ -55,11 +55,42 @@ state_set() { mkdir -p "$APP_DIR" && print -r -- "$2" > "$APP_DIR/$1"; }
 log() { print -r -- "$(date '+%Y-%m-%d %H:%M:%S') $*"; }
 progress() { [[ "$cmd" == (check|run) && -t 2 ]] && print -u2 -r -- "… $*"; }
 
+usage() {
+  cat <<USAGE
+cynkra-endpoint-check $SCRIPT_VERSION: read-only security check of this Mac (changes nothing, needs no admin rights)
+
+Usage:
+  cynkra-endpoint-check [check] [--offline]    show the result now; writes .txt/.json to the current
+                                               directory and sends nothing; --offline skips the steps
+                                               that need the network (outdated packages, vulnerabilities)
+  cynkra-endpoint-check owner name@cynkra.com  register this Mac to you; only registered Macs report
+  cynkra-endpoint-check run [--force]          check, report to cynkra, notify (what the background
+                                               service runs once a day)
+  cynkra-endpoint-check --version | --help
+
+Background service: brew services start cynkra-endpoint-check
+More: https://github.com/cynkra/homebrew-tap
+USAGE
+}
+
 cmd=check force=false offline=false
-case "$1" in check|run|install|uninstall|owner) cmd=$1; shift ;; esac
-for a in "$@"; do
-  case "$a" in --offline) offline=true ;; --force) force=true ;; esac
-done
+case "$1" in
+  -h|--help|help) usage; exit 0 ;;
+  -V|--version|version) print -r -- "cynkra-endpoint-check $SCRIPT_VERSION"; exit 0 ;;
+  check|run|install|uninstall|owner) cmd=$1; shift ;;
+  -*) ;;
+  ?*) print -u2 -r -- "Unknown command: $1"; usage >&2; exit 2 ;;
+esac
+if [[ "$cmd" == (check|run) ]]; then
+  for a in "$@"; do
+    case "$a" in
+      --offline) offline=true ;;
+      --force) force=true ;;
+      -h|--help) usage; exit 0 ;;
+      *) print -u2 -r -- "Unknown option: $a"; usage >&2; exit 2 ;;
+    esac
+  done
+fi
 
 if [[ "$cmd" == owner ]]; then
   [[ "$1" == ?*@cynkra.com ]] || { echo "Usage: $0 owner name@cynkra.com" >&2; exit 2; }
