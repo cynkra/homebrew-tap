@@ -132,5 +132,21 @@ notify 0 0                                         # healthy device: nothing
 notify 1 1 FAKE_FDESETUP="FileVault is Off."       # failed check: alert, repeated after 20 h only
 notify 1 1 FAKE_FDESETUP="Encryption in progress"  # warning: once, not again while unchanged
 
+# central report only with a cynkra owner (the tap is public; other users send nothing)
+report_attempt() {  # report_attempt <expected yes|no> [owner]
+  local want=$1 owner=$2 tmp=$(mktemp -d) got=no
+  [[ -n "$owner" ]] && { mkdir -p "$tmp/Library/Application Support/cynkra-endpoint-check"; print -r -- "$owner" > "$tmp/Library/Application Support/cynkra-endpoint-check/owner"; }
+  (cd $tmp && env -i HOME=$tmp PATH="$stubs:/usr/bin:/bin:/usr/sbin:/sbin" NOTIFY_LOG=/dev/null \
+    CYNKRA_ENDPOINT_CHECK_FORM_URL=http://127.0.0.1:9/formResponse SOCKETFILTERFW=$stubs/socketfilterfw \
+    FAKE_DEFAULTS_FMMEnabled=1 AUTOSTART_DIRS=$tmp/agents ONEPASSWORD_APP=$tmp \
+    /bin/zsh $script run --offline --force > $tmp/out 2>&1)
+  grep -q 'report ' $tmp/out && got=yes
+  rm -rf $tmp
+  if [[ "$got" == "$want" ]]; then (( passed++ )); else (( failed++ )); print -r -- "not ok: report attempt with owner '${owner:-none}' should be $want"; fi
+}
+report_attempt no
+report_attempt no someone@example.com
+report_attempt yes jannes@cynkra.com
+
 print "$passed passed, $failed failed"
 (( failed == 0 ))
