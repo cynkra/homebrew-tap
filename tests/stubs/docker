@@ -1,2 +1,5 @@
 #!/bin/zsh
-exit 1
+# a running engine only with FAKE_DOCKER_PS="<name> <ports>" (docker ps output); no images
+[[ -n "$FAKE_DOCKER_PS" ]] || exit 1
+[[ "$1" == ps ]] && print -r -- "$FAKE_DOCKER_PS"
+exit 0

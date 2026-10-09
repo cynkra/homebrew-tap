@@ -87,7 +87,7 @@ expect FAIL "AI extensions" FAKE_VM=1 TEST_VSCODE_EXT=anthropic.claude-code
 # plaintext credentials: names only, values from 1Password, other variables and paths are fine
 expect PASS "Plaintext credentials"
 expect WARN "Plaintext credentials" "TEST_FILE=.zprofile:export GH_TOKEN=ghp_abc123"
-expect WARN "Plaintext credentials" "TEST_FILE=.zprofile_secrets:export ANTHROPIC_API_KEY=sk-ant-x"
+expect PASS "Plaintext credentials" "TEST_FILE=.zprofile_secrets:export ANTHROPIC_API_KEY=sk-ant-x"  # only the listed files are read
 expect WARN "Plaintext credentials" "TEST_FILE=.Renviron:GITHUB_PAT=ghp_abc123"
 expect WARN "Plaintext credentials" "TEST_FILE=.git-credentials:https://user:pw@github.com"
 expect WARN "Plaintext credentials" "TEST_FILE=.aws/credentials:aws_secret_access_key = abc"
@@ -95,6 +95,12 @@ expect PASS "Plaintext credentials" "TEST_FILE=.zprofile:export GH_TOKEN=\$(op r
 expect PASS "Plaintext credentials" "TEST_FILE=.zshrc:export GITHUB_TOKEN=\$GH_TOKEN"
 expect PASS "Plaintext credentials" "TEST_FILE=.zshrc:export SSH_KEY_PATH=~/.ssh/id_ed25519"
 expect PASS "Plaintext credentials" "TEST_FILE=.zshrc:export NPM_TOKEN="
+# ignore list for false positives: variable names and file paths
+ignore="TEST_FILE=Library/Application Support/cynkra-endpoint-check/plaintext-ignore"
+expect PASS "Plaintext credentials" "TEST_FILE=.zshrc:export MAPBOX_PUBLIC_KEY=pk.abc" "$ignore:MAPBOX_PUBLIC_KEY"
+expect WARN "Plaintext credentials" "TEST_FILE=.zshrc:export MAPBOX_PUBLIC_KEY=pk.abc" "TEST_FILE=.zshrc:export GH_TOKEN=ghp_abc123" "$ignore:MAPBOX_PUBLIC_KEY"
+expect PASS "Plaintext credentials" "TEST_FILE=.git-credentials:https://user:pw@github.com" "$ignore:~/.git-credentials"
+expect PASS "Plaintext credentials" "TEST_FILE=.zshrc:export GH_TOKEN=ghp_abc123" "$ignore:# false positive" "$ignore:~/.zshrc"
 
 # autostart: only jobs that start by themselves, warning for new ones after the first run
 expect INFO "Autostart entries" TEST_AGENT=com.example.a:RunAtLoad
@@ -163,6 +169,35 @@ no_files() {
   rm -rf $tmp
 }
 no_files
+
+# central report: summaries only, never names of keys, launchd jobs, variables, containers or extensions
+privacy() {
+  local tmp=$(mktemp -d) app sent check leak bad=""
+  app="$tmp/Library/Application Support/cynkra-endpoint-check"
+  mkdir -p "$app" $tmp/.ssh $tmp/agents $tmp/.vscode/extensions/github.copilot-1.0.0
+  print test@cynkra.com > "$app/owner"
+  print com.example.known > "$app/autostart_known"
+  ssh-keygen -q -t ed25519 -N "" -C "" -f $tmp/.ssh/id_customerx
+  /usr/bin/plutil -create xml1 $tmp/agents/com.example.secretapp.plist
+  /usr/bin/plutil -insert Label -string com.example.secretapp $tmp/agents/com.example.secretapp.plist
+  /usr/bin/plutil -insert RunAtLoad -bool true $tmp/agents/com.example.secretapp.plist
+  print 'export GH_TOKEN=ghp_abc123' > $tmp/.zprofile
+  (cd $tmp && env -i HOME=$tmp PATH="$stubs:/usr/bin:/bin:/usr/sbin:/sbin" NOTIFY_LOG=/dev/null CURL_LOG=$tmp/curl.log \
+    CYNKRA_ENDPOINT_CHECK_FORM_URL=http://form.invalid/formResponse SOCKETFILTERFW=$stubs/socketfilterfw \
+    FAKE_DEFAULTS_FMMEnabled=1 AUTOSTART_DIRS=$tmp/agents ONEPASSWORD_APP=$tmp FAKE_VM=1 \
+    FAKE_DOCKER_PS="customerx-db 0.0.0.0:5432->5432/tcp" /bin/zsh $script run --offline --force >/dev/null 2>&1)
+  sent=$(cat $tmp/curl.log 2>/dev/null)
+  for check in "SSH keys: 1 without passphrase" "New autostart entries: 1 new" "Plaintext credentials: found" \
+               "Container ports (docker): 1 containers" "AI extensions: 1 installed"; do
+    [[ "$sent" == *"$check"* ]] || bad+=" missing '$check';"
+  done
+  for leak in id_customerx com.example.secretapp GH_TOKEN .zprofile customerx-db 5432 github.copilot; do
+    [[ "$sent" == *"$leak"* ]] && bad+=" sent '$leak';"
+  done
+  rm -rf $tmp
+  if [[ -z "$bad" ]]; then (( passed++ )); else (( failed++ )); print -r -- "not ok: central report:$bad"; fi
+}
+privacy
 
 # help and version do not run the check; unknown input fails
 cli() {  # cli <expected exit> <expected text> args...

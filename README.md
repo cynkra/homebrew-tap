@@ -29,7 +29,12 @@ cynkra-endpoint-check check --json           # full report as JSON, e.g. > repor
 Updates arrive with `brew upgrade`.
 Remove with `brew services stop cynkra-endpoint-check && brew uninstall cynkra-endpoint-check`.
 
-What leaves the device: only devices registered with an `@cynkra.com` owner send a short status (status per check, counts, script version) to cynkra's overview once a day; anyone else using this tap sends nothing. No software list, files or browsing history leave the device, and plaintext credentials are reported as a count only (file and variable names stay in the local report).
+What leaves the device: only devices registered with an `@cynkra.com` owner send a short status to cynkra's overview once a day; anyone else using this tap sends nothing.
+The status contains the device ID (a hash of the serial number), owner, model, macOS version, script version and, for each failed or warning check, its name and a summary without names, such as "SSH keys: 1 without passphrase" or "Plaintext credentials: found".
+No software list, files, browsing history or names of files, keys, variables, apps, containers or extensions leave the device; the details stay in the local report (`cynkra-endpoint-check check`).
+
+The plaintext-credentials check reads only shell startup files (`~/.zshrc`, `~/.zprofile`, `~/.zshenv`, `~/.zlogin`, `~/.bash_profile`, `~/.bashrc`, `~/.profile`, `~/.Renviron`) and the credential files of git, AWS, npm, PyPI, gh, Docker and `~/.netrc`.
+A false positive, such as `MAPBOX_PUBLIC_KEY`, can be silenced by adding the variable name or file path (`~/...`) as a line to `~/Library/Application Support/cynkra-endpoint-check/plaintext-ignore`.
 
 ## Security of this tap
 
