@@ -1,14 +1,66 @@
 # Credentials without plaintext files
 
 `cynkra-endpoint-check` warns about **Plaintext credentials** when it finds tokens, passwords or API keys in your dotfiles or tool configs.
-This guide shows how to move them into 1Password or the macOS keychain without losing the convenience.
-Each section is short; jump to the one the warning points to.
+This guide explains the rule behind the warning and shows, per tool, how to follow it without losing convenience.
+The first part is the overview; the sections after it are the details the warnings link to.
 
-## Why
+## Principle
 
-FileVault protects your files only while the Mac is off; once you are logged in, every file is readable.
-Any process you start (an npm `postinstall` script, an R or Python package, an AI agent) can read your dotfiles and inherits every exported environment variable.
-The aim is that a secret reaches only the process that needs it, and only when it needs it.
+**A secret should reach only the code that needs it, when it needs it.**
+
+The realistic risk is accidental exposure: backups, synced folders, git repositories, screen sharing, tools and AI agents that read your files, an exported variable that every process inherits, RStudio saving copies of the session environment.
+Following the principle removes that risk completely.
+Malicious code running as you is a different problem; that is the job of the other endpoint controls and of tokens that can do little.
+
+FileVault does not help here: it protects your files only while the Mac is off.
+
+## Where secrets live
+
+In a password manager (1Password, Bitwarden) or the macOS keychain.
+Never in dotfiles, `.Renviron`, `.env` files, scripts or repositories.
+Secrets you no longer use are deleted and revoked at the provider.
+
+## How to use them
+
+It depends on who needs the secret:
+
+| Who needs it | How | Details |
+|---|---|---|
+| A CLI with its own login (`gh`, `aws`, `gcloud`, `docker`, git over HTTPS) | Log in normally; the CLI keeps the token in the keychain | [git](#git), [gh](#gh), [AWS](#aws), [Docker](#docker), [CLI plugins](#cli-plugins) |
+| Your own code (R, shell, Python) | Fetch it at the point of use, so only the function that needs it sees it | [Point of use](#point-of-use), [R](#r) |
+| A third-party tool that only reads an environment variable | Set it for that one command | [Env vars](#env-vars) |
+| A tool that only reads a config file | Keep a reference in the file, or write the file when needed | [Config files](#config-files) |
+| GitHub from R | `gitcreds` and `gh`, no `GITHUB_PAT` | [R](#r) |
+
+Avoid the workarounds that look safe but are not: `export X=$(op read …)` in `.zshrc` and `Sys.setenv(X = …)` in `.Rprofile` keep the secret off the disk, but put it into every shell or R session and everything started from it.
+
+## High-value secrets
+
+Ordinary secrets (an API key for a hobby project, a read-only token) are fine in the keychain.
+High-value ones (password manager master passwords, production access, write access to customer repositories) need a confirmation for every use:
+
+- in 1Password, `op` asks for Touch ID;
+- in the keychain, create the entry with `-T ""`: then every read asks for confirmation.
+  Entries created with `security` without it can be read by any process running as you, without a prompt.
+
+```sh
+security add-generic-password -a "$USER" -s prod-db -T "" -w   # asks for the value
+```
+
+Where the provider allows it, also give the token narrow scopes and an expiry date.
+
+## Rotate
+
+A secret that has ever been in a git repository, a backup, a synced folder (iCloud, Dropbox, …) or a screen share must be replaced: create a new one at the provider and revoke the old one right away.
+Moving it into 1Password does not undo the earlier exposure.
+
+## What the check does
+
+`cynkra-endpoint-check` reminds you of these rules in the common places: shell startup files and the files they source, `.Renviron`, `.Rprofile`, and the credential files of git, AWS, npm, PyPI, gh and Docker.
+It catches honest mistakes; it can't guarantee the rules.
+Project `.env` files, scripts and tool caches are not checked; keeping secrets out of them is up to you.
+
+# Details
 
 ## Setup
 
@@ -39,9 +91,33 @@ echo 'source ~/.config/op/plugins.sh' >> ~/.zshrc
 
 Then remove the token from wherever it was before (`.zshrc`, `~/.config/gh/hosts.yml`, …).
 
+## Point of use
+
+In code you control, read the secret where it is used instead of from the environment.
+From 1Password:
+
+```sh
+op read op://Private/OpenAI/credential
+```
+
+From the keychain (store once, then read):
+
+```sh
+security add-generic-password -a "$USER" -s openai -w     # asks for the value
+security find-generic-password -a "$USER" -s openai -w
+```
+
+In a shell function, so the key exists only while the command runs:
+
+```sh
+deploy() { DEPLOY_TOKEN=$(op read op://Private/deploy/token) ./deploy.sh "$@"; }
+```
+
+For R, see [R](#r).
+
 ## Env vars
 
-For API keys that tools read from environment variables (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, …).
+For third-party tools that only read an environment variable (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, …), set it for that one command.
 Put **references** instead of values into a file; it holds no secret and is safe to keep in a dotfiles repo:
 
 ```sh
@@ -50,22 +126,18 @@ OPENAI_API_KEY=op://Private/OpenAI/credential
 ANTHROPIC_API_KEY=op://Private/Anthropic/credential
 ```
 
-Run a command with the keys set only for that command:
-
 ```sh
-op run --env-file ~/.config/secrets.env -- python train.py
+op run --env-file ~/.config/secrets.env -- some-tool
+alias withkeys='op run --env-file ~/.config/secrets.env --'   # in ~/.zshrc
+withkeys some-tool
 ```
 
-Shorter with an alias in `~/.zshrc`:
+For GitHub tokens: `GH_TOKEN=$(gh auth token) some-tool`.
 
-```sh
-alias withkeys='op run --env-file ~/.config/secrets.env --'
-withkeys python train.py
-```
+Then delete the `export …=<value>` lines from `~/.zshrc` and friends, and don't replace them with `export X=$(op read …)`: that slows down every new shell and puts the key back into the environment of every process you start.
 
-Then delete the `export …=<value>` lines from `~/.zshrc` and friends.
-
-Avoid `export OPENAI_API_KEY=$(op read op://…)` in `~/.zshrc`: it slows down every new shell and puts the key back into the environment of every process you start.
+`op run` does not reach apps started from the Dock or with `open -a` (RStudio, Positron, VS Code): macOS starts them without your shell's environment.
+For code in those apps, fetch at the [point of use](#point-of-use).
 
 ## Config files
 
@@ -81,7 +153,7 @@ op inject -i ~/.npmrc.tpl -o ~/.npmrc
 ```
 
 The file then holds the token again, so prefer the env-var form where the tool supports it.
-npm does: put `${NPM_TOKEN}` into `~/.npmrc` and set the variable with `op run`:
+npm does: put `${NPM_TOKEN}` into `~/.npmrc` and set the variable for the command:
 
 ```sh
 # ~/.npmrc
@@ -144,14 +216,34 @@ Then log in again (`docker login …`); the `auths` entries no longer contain th
 
 ## R
 
-`GITHUB_PAT` in `~/.Renviron`: remove the line and store the token where git keeps it ([git](#git) first), then in R:
+**GitHub:** remove `GITHUB_PAT` from `~/.Renviron` and store the token where git keeps it ([git](#git) first), once:
 
 ```r
 gitcreds::gitcreds_set()
 ```
 
-usethis, gh, remotes and pak find the token there.
-For other API keys used from R, start R or RStudio through `op run` ([Env vars](#env-vars)), e.g. `withkeys R`.
+pak, remotes, usethis and gh find it there on their own; nothing needs `GITHUB_PAT` any more.
+In your own code, ask for it where you need it:
+
+```r
+token <- gh::gh_token()
+httr2::request("https://api.github.com/user") |>
+  httr2::req_auth_bearer_token(gh::gh_token()) |>
+  httr2::req_perform()
+```
+
+Don't put `Sys.setenv(GITHUB_PAT = gh::gh_token())` into `.Rprofile`: it keeps the token off the disk, but puts it back into every R session and everything it starts.
+The safe route needs no setup at all.
+
+**Other API keys:** store them in the keychain with the keyring package and read them at the point of use:
+
+```r
+keyring::key_set("openai")              # once, asks for the value
+api_key <- keyring::key_get("openai")
+```
+
+Or from 1Password: `system2("op", c("read", "op://Private/OpenAI/credential"), stdout = TRUE)`.
+Both work in RStudio and Positron started from the Dock, where `op run` doesn't reach.
 
 ## Python
 
@@ -161,7 +253,8 @@ For uploads with twine, use the keyring instead of `password` in `~/.pypirc`:
 keyring set https://upload.pypi.org/legacy/ __token__
 ```
 
-Or set `TWINE_PASSWORD` with `op run` ([Env vars](#env-vars)).
+Or set `TWINE_PASSWORD` for the command ([Env vars](#env-vars)).
+In your own code, `keyring.get_password("openai", "<user>")` reads from the macOS keychain at the point of use.
 
 ## SSH
 
@@ -179,11 +272,6 @@ Import your existing key into 1Password and delete the file, or at least give it
 ssh-keygen -p -f ~/.ssh/id_ed25519
 ```
 
-## Rotate
-
-A key that has ever been in a git repository, a backup or a synced folder (iCloud, Dropbox, …) must be rotated: create a new one at the provider and revoke the old one.
-Moving it into 1Password does not undo the earlier exposure.
-
 ## Dotfiles repo
 
 If you keep your dotfiles in git, add a pre-commit hook that blocks secrets:
@@ -198,7 +286,7 @@ Older gitleaks versions use `gitleaks protect --staged`.
 
 ## False positive
 
-The check reports variables whose names look like secrets (`*_TOKEN`, `*_KEY`, …), so a non-secret such as `MAPBOX_PUBLIC_KEY` can show up.
+The check reports variables whose names look like secrets (`*_TOKEN`, `*_KEY`, …), so a non-secret such as `MAPBOX_PUBLIC_KEY` or an OAuth client ID can show up.
 Add the variable name, or a whole file as `~/...`, as a line to the ignore list:
 
 ```sh
