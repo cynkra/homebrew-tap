@@ -35,6 +35,7 @@ No software list, files, browsing history or names of files, keys, variables, ap
 
 The plaintext-credentials check reads only shell startup files (`~/.zshrc`, `~/.zprofile`, `~/.zshenv`, `~/.zlogin`, `~/.bash_profile`, `~/.bashrc`, `~/.profile`, `~/.Renviron`) and the credential files of git, AWS, npm, PyPI, gh, Docker and `~/.netrc`.
 A false positive, such as `MAPBOX_PUBLIC_KEY`, can be silenced by adding the variable name or file path (`~/...`) as a line to `~/Library/Application Support/cynkra-endpoint-check/plaintext-ignore`.
+How to move credentials into 1Password or the keychain without losing convenience, per tool: [docs/credentials.md](docs/credentials.md).
 
 ## Security of this tap
 
