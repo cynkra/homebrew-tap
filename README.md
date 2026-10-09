@@ -33,7 +33,8 @@ What leaves the device: only devices registered with an `@cynkra.com` owner send
 The status contains the device ID (a hash of the serial number), owner, model, macOS version, script version and, for each failed or warning check, its name and a summary without names, such as "SSH keys: 1 without passphrase" or "Plaintext credentials: found".
 No software list, files, browsing history or names of files, keys, variables, apps, containers or extensions leave the device; the details stay in the local report (`cynkra-endpoint-check check`).
 
-The plaintext-credentials check reads only shell startup files (`~/.zshrc`, `~/.zprofile`, `~/.zshenv`, `~/.zlogin`, `~/.bash_profile`, `~/.bashrc`, `~/.profile`, `~/.Renviron`) and the credential files of git, AWS, npm, PyPI, gh, Docker and `~/.netrc`.
+The plaintext-credentials check reads only shell startup files (`~/.zshrc`, `~/.zprofile`, `~/.zshenv`, `~/.zlogin`, `~/.bash_profile`, `~/.bashrc`, `~/.profile`, `~/.Renviron`) and the credential files of git, AWS, npm, PyPI, gh, Docker and `~/.netrc`; for git it also checks the configured credential helper.
+References such as `op://…` (for `op run`) and `${NPM_TOKEN}` in `~/.npmrc` are not flagged, and each finding names its fix and the matching section of the guide below.
 A false positive, such as `MAPBOX_PUBLIC_KEY`, can be silenced by adding the variable name or file path (`~/...`) as a line to `~/Library/Application Support/cynkra-endpoint-check/plaintext-ignore`.
 How to move credentials into 1Password or the keychain without losing convenience, per tool: [docs/credentials.md](docs/credentials.md).
 

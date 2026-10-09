@@ -36,6 +36,7 @@ expect() {
   local out=$(cd $tmp && env -i HOME=$tmp PATH="$stubs:/usr/bin:/bin:/usr/sbin:/sbin" \
     SOCKETFILTERFW=$stubs/socketfilterfw FAKE_DEFAULTS_FMMEnabled=1 AUTOSTART_DIRS=$tmp/agents ONEPASSWORD_APP=$tmp "$@" /bin/zsh $script check --offline 2>&1)
   local line=$(print -r -- "$out" | grep -E "^(PASS|FAIL|WARN|INFO) +$check( |$)")
+  got_line=$line
   rm -rf $tmp
   if [[ "$want" == NONE && -z "$line" ]] || [[ "$want" != NONE && "$line" == "$want "* ]]; then
     (( passed++ ))
@@ -101,6 +102,29 @@ expect PASS "Plaintext credentials" "TEST_FILE=.zshrc:export MAPBOX_PUBLIC_KEY=p
 expect WARN "Plaintext credentials" "TEST_FILE=.zshrc:export MAPBOX_PUBLIC_KEY=pk.abc" "TEST_FILE=.zshrc:export GH_TOKEN=ghp_abc123" "$ignore:MAPBOX_PUBLIC_KEY"
 expect PASS "Plaintext credentials" "TEST_FILE=.git-credentials:https://user:pw@github.com" "$ignore:~/.git-credentials"
 expect PASS "Plaintext credentials" "TEST_FILE=.zshrc:export GH_TOKEN=ghp_abc123" "$ignore:# false positive" "$ignore:~/.zshrc"
+
+# credentials: references and keychain/SSO setups are fine; each finding names its fix and guide section
+expect PASS "Plaintext credentials" "TEST_FILE=.zshrc:OPENAI_API_KEY=op://Private/OpenAI/credential"
+expect PASS "Plaintext credentials" "TEST_FILE=.npmrc://registry.npmjs.org/:_authToken=\${NPM_TOKEN}"
+expect WARN "Plaintext credentials" "TEST_FILE=.npmrc://registry.npmjs.org/:_authToken=npm_abc123"
+expect WARN "Plaintext credentials" "TEST_FILE=.gitconfig:[credential]" "TEST_FILE=.gitconfig:	helper = store"
+expect PASS "Plaintext credentials" "TEST_FILE=.gitconfig:[credential]" "TEST_FILE=.gitconfig:	helper = osxkeychain"
+expect PASS "Plaintext credentials" "TEST_FILE=.aws/config:[profile dev]" "TEST_FILE=.aws/config:sso_session = cynkra"
+# expect_text <text> <expected status> <check> [VAR=value ...]: the line also contains <text>
+expect_text() {
+  local text=$1; shift
+  expect "$@"
+  if [[ "$got_line" == *"$text"* ]]; then (( passed++ )); else
+    (( failed++ )); print -r -- "not ok: $2 line should contain '$text'; got: ${got_line:-<no line>}"; fi
+}
+guide=https://github.com/cynkra/homebrew-tap/blob/main/docs/credentials.md
+expect_text "~/.zshrc: GH_TOKEN → op:// reference + op run (guide: $guide#env-vars)" WARN "Plaintext credentials" "TEST_FILE=.zshrc:export GH_TOKEN=ghp_abc123"
+expect_text "~/.Renviron: GITHUB_PAT → gitcreds::gitcreds_set() (guide" WARN "Plaintext credentials" "TEST_FILE=.Renviron:GITHUB_PAT=ghp_abc123"
+expect_text "~/.Renviron: GITHUB_PAT, OPENAI_API_KEY → gitcreds::gitcreds_set() for GITHUB_PAT, op run for the others" WARN "Plaintext credentials" "TEST_FILE=.Renviron:GITHUB_PAT=ghp_abc123" "TEST_FILE=.Renviron:OPENAI_API_KEY=sk-x"
+expect_text "~/.Renviron: OPENAI_API_KEY → op run (guide" WARN "Plaintext credentials" "TEST_FILE=.Renviron:OPENAI_API_KEY=sk-x"
+expect_text "$guide#git" WARN "Plaintext credentials" "TEST_FILE=.git-credentials:https://user:pw@github.com"
+expect_text "$guide#false-positive" WARN "Plaintext credentials" "TEST_FILE=.zshrc:export GH_TOKEN=ghp_abc123"
+expect_text "1Password SSH agent configured" PASS "SSH keys" "TEST_FILE=.ssh/config:  IdentityAgent \"~/Library/Group Containers/2BUA8C4S2C.com.1password/t/agent.sock\""
 
 # autostart: only jobs that start by themselves, warning for new ones after the first run
 expect INFO "Autostart entries" TEST_AGENT=com.example.a:RunAtLoad
