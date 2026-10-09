@@ -43,6 +43,7 @@ ENTRY_STATUS="entry.1326653575"
 ENTRY_DETAILS="entry.1302829151"
 ENTRY_SCRIPT_VERSION="entry.1572118900"
 HELP_URL=""             # optional: guide offered in the alert
+GUIDE_URL="https://github.com/cynkra/homebrew-tap/blob/main/docs/credentials.md"  # credentials guide
 
 SCRIPT_VERSION="0.3.5"
 LABEL="ch.cynkra.endpoint-check"
@@ -270,44 +271,113 @@ for f in ~/.ssh/*(N.); do
   head -1 "$f" 2>/dev/null | grep -q "PRIVATE KEY" || continue
   ssh-keygen -y -P "" -f "$f" >/dev/null 2>&1 && unencrypted+=("${f:t}")
 done
+op_agent=""
+grep -qiE '^[[:space:]]*IdentityAgent[[:space:]].*(1password|2BUA8C4S2C)' ~/.ssh/config 2>/dev/null \
+  && op_agent="; 1Password SSH agent configured"
 if (( ${#unencrypted} )); then
-  result WARN "SSH keys" "without passphrase: ${(j:, :)unencrypted} (ssh-keygen -p -f ~/.ssh/<key>, or move them to 1Password)" \
+  result WARN "SSH keys" "without passphrase: ${(j:, :)unencrypted} (ssh-keygen -p -f ~/.ssh/<key>, or move them to 1Password; guide: $GUIDE_URL#ssh)$op_agent" \
     "${#unencrypted} without passphrase"
 else
-  result PASS "SSH keys" "no unencrypted private keys in ~/.ssh"
+  result PASS "SSH keys" "no unencrypted private keys in ~/.ssh$op_agent"
 fi
 
 # Plaintext credentials (warning only, rule introduced in stages): reads only the files listed
-# here and reports file and variable names locally, never values; the central report only says
-# that something was found. Values read from 1Password ($(op read ...)), other variables, paths
-# and empty values are not reported. False positives go into the ignore list, one variable
-# name or file path (~/...) per line.
+# here (shell startup files and the files they source, .Renviron, .Rprofile, tool configs) and
+# reports file and variable names locally, never values; the central report only says that
+# something was found. It catches honest mistakes, it cannot enforce the rule: project .env files,
+# scripts and tool caches are not read. Where a tool says how it stores credentials (git credential
+# helper, Docker credsStore), that is checked instead of the file contents. op:// references (for
+# op run), other variables, paths and empty values are fine; secrets fetched from a password
+# manager at shell start (export X=$(op read ...)) are reported, since every process inherits them.
+# Each finding names its fix and the section of the guide (GUIDE_URL). False positives go into
+# the ignore list, one variable name or file path (~/...) per line.
 ignore_file="$APP_DIR/plaintext-ignore"
 ignored=(${(f)"$(sed -E 's/#.*//; s/^[[:space:]]+//; s/[[:space:]]+$//' "$ignore_file" 2>/dev/null)"})
 ignored=(${ignored/#$HOME/~})
 plain=()
-plain_add() { (( ${ignored[(Ie)$1]} )) || plain+=("$1"); }
-[[ -f ~/.netrc ]] && grep -qE '(^|[[:space:]])password[[:space:]]' ~/.netrc && plain_add "~/.netrc"
-[[ -s ~/.git-credentials ]] && plain_add "~/.git-credentials"
-[[ -f ~/.aws/credentials ]] && grep -q 'aws_secret_access_key' ~/.aws/credentials && plain_add "~/.aws/credentials"
-[[ -f ~/.npmrc ]] && grep -q '_authToken=' ~/.npmrc && plain_add "~/.npmrc"
-[[ -f ~/.pypirc ]] && grep -qE '^[[:space:]]*password' ~/.pypirc && plain_add "~/.pypirc"
-[[ -f ~/.config/gh/hosts.yml ]] && grep -q 'oauth_token:' ~/.config/gh/hosts.yml && plain_add "~/.config/gh/hosts.yml"
+plain_add() {  # plain_add <file> <fix> <guide section> [<what>]
+  (( ${ignored[(Ie)$1]} )) || plain+=("$1${4:+: $4} → $2 (#$3)")
+}
+[[ -f ~/.netrc ]] && grep -qE '(^|[[:space:]])password[[:space:]]' ~/.netrc \
+  && plain_add "~/.netrc" "op inject from a template" config-files
+# git: the credential helper "store" writes plaintext on first use, even before ~/.git-credentials exists
+git_store=false
+[[ -f ~/.gitconfig || -f ~/.config/git/config ]] \
+  && git config --global --get-all credential.helper 2>/dev/null | grep -qE '^[[:space:]]*store([[:space:]]|$)' && git_store=true
+if [[ -s ~/.git-credentials ]]; then
+  plain_add "~/.git-credentials" "git config --global credential.helper osxkeychain, then delete the file" git
+elif $git_store; then
+  plain_add "~/.gitconfig" "git config --global credential.helper osxkeychain" git "credential.helper store"
+fi
+# AWS: only static keys; SSO profiles and credential_process in ~/.aws/config are fine
+[[ -f ~/.aws/credentials ]] && grep -q 'aws_secret_access_key' ~/.aws/credentials \
+  && plain_add "~/.aws/credentials" "aws configure sso, or op plugin init aws" aws
+# npm: a token written into the file; _authToken=${NPM_TOKEN} reads it from the environment
+[[ -f ~/.npmrc ]] && grep -E '_authToken=' ~/.npmrc | grep -qvE '_authToken=[[:space:]]*(\$\{|$)' \
+  && plain_add "~/.npmrc" '_authToken=${NPM_TOKEN} with op run' config-files
+[[ -f ~/.pypirc ]] && grep -qE '^[[:space:]]*password' ~/.pypirc \
+  && plain_add "~/.pypirc" "keyring, or TWINE_PASSWORD with op run" python
+# gh: a token in hosts.yml means a login with --insecure-storage; by default gh uses the keychain
+[[ -f ~/.config/gh/hosts.yml ]] && grep -q 'oauth_token:' ~/.config/gh/hosts.yml \
+  && plain_add "~/.config/gh/hosts.yml" "gh auth logout && gh auth login" gh
 [[ -f ~/.docker/config.json ]] && python3 -c '
 import json, os, sys
 d = json.load(open(os.path.expanduser("~/.docker/config.json")))
 sys.exit(0 if not d.get("credsStore") and any(v.get("auth") for v in d.get("auths", {}).values()) else 1)' 2>/dev/null \
-  && plain_add "~/.docker/config.json"
-for f in ~/.zshrc ~/.zprofile ~/.zshenv ~/.zlogin ~/.bash_profile ~/.bashrc ~/.profile ~/.Renviron; do
+  && plain_add "~/.docker/config.json" 'set "credsStore": "osxkeychain", then docker login again' docker
+# Shell startup files and the files they source (source/. lines, paths in $HOME outside ~/Library;
+# paths built from other variables or commands are not followed)
+shell_files=() queue=(~/.zshrc ~/.zprofile ~/.zshenv ~/.zlogin ~/.bash_profile ~/.bashrc ~/.profile)
+while (( ${#queue} && ${#shell_files} < 50 )); do
+  f=${queue[1]}; shift queue
+  [[ -f $f ]] && (( ! ${shell_files[(Ie)$f]} )) || continue
+  shell_files+=("$f")
+  for src in ${(f)"$(grep -vE '^[[:space:]]*#' "$f" 2>/dev/null \
+      | grep -oE '(^|[;&|{]|then|do)[[:space:]]*(source|\.)[[:space:]]+[^[:space:];&|)]+' \
+      | sed -E 's/.*(source|\.)[[:space:]]+//; s/^["'"'"']//; s/["'"'"']$//')"}; do
+    src=${src/#\~/$HOME}; src=${src/#\$\{HOME\}/$HOME}; src=${src/#\$HOME/$HOME}
+    [[ $src == *['$`']* ]] && continue
+    [[ $src == /* ]] || src=$HOME/$src
+    [[ $src == $HOME/* && $src != $HOME/Library/* ]] && queue+=("$src")
+  done
+done
+name_re='[A-Za-z_][A-Za-z0-9_]*(TOKEN|SECRET|PASSWORD|PASSWD|API_KEY|APIKEY|_PAT|_KEY)[A-Za-z0-9_]*'
+fetch_re='(\$\(|`)[[:space:]]*(op (read|item get)|security find-(generic|internet)-password|gh auth token|bw get)'
+for f in $shell_files ~/.Renviron; do
   [[ -f $f ]] && (( ! ${ignored[(Ie)${f/#$HOME/~}]} )) || continue
-  vars=$(grep -E '^[[:space:]]*(export[[:space:]]+)?[A-Za-z_][A-Za-z0-9_]*(TOKEN|SECRET|PASSWORD|PASSWD|API_KEY|APIKEY|_PAT|_KEY)[A-Za-z0-9_]*=' "$f" \
-    | grep -vE '=[[:space:]]*["'"'"']?([$`/~]|$)' \
+  vars=$(grep -E "^[[:space:]]*(export[[:space:]]+)?$name_re=" "$f" \
+    | grep -vE '=[[:space:]]*["'"'"']?([$`/~]|op://|$)' \
     | sed -E 's/^[[:space:]]*(export[[:space:]]+)?([A-Za-z0-9_]+)=.*/\2/' | sort -u)
   vars=(${(f)vars}); vars=(${vars:|ignored})
-  (( ${#vars} )) && plain+=("${f/#$HOME/~}: ${(j:, :)vars}")
+  if (( ${#vars} )); then
+    if [[ $f == */.Renviron ]]; then
+      fix="keyring::key_get() at the point of use"
+      (( ${vars[(Ie)GITHUB_PAT]} )) && fix="gitcreds::gitcreds_set()${${vars:#GITHUB_PAT}:+ for GITHUB_PAT, keyring::key_get() for the others}"
+      plain_add "${f/#$HOME/~}" "$fix" r "${(j:, :)vars}"
+    else
+      plain_add "${f/#$HOME/~}" "op:// reference + op run" env-vars "${(j:, :)vars}"
+    fi
+  fi
+  # Fetched from a password manager at shell start (export X=$(op read ...)): off the disk, but in
+  # the environment of every process started from the shell; any variable name counts
+  [[ $f == */.Renviron ]] && continue
+  fetched=$(grep -E "^[[:space:]]*(export[[:space:]]+)?[A-Za-z_][A-Za-z0-9_]*=[\"']?$fetch_re" "$f" \
+    | sed -E 's/^[[:space:]]*(export[[:space:]]+)?([A-Za-z0-9_]+)=.*/\2/' | sort -u)
+  fetched=(${(f)fetched}); fetched=(${fetched:|ignored})
+  (( ${#fetched} )) && plain_add "${f/#$HOME/~}" "fetch at the point of use, op run for tools, or a CLI plugin" \
+    how-to-use-them "${(j:, :)fetched} (set at shell start)"
 done
+# R: Sys.setenv() with a token-like name in ~/.Rprofile puts the secret into every R session,
+# wherever the value comes from
+if [[ -f ~/.Rprofile ]]; then
+  rvars=$(grep -vE '^[[:space:]]*#' ~/.Rprofile | grep -oE 'Sys\.setenv\(.*' \
+    | grep -oE "${name_re}[[:space:]]*=" | sed -E 's/[[:space:]]*=$//' | sort -u)
+  rvars=(${(f)rvars}); rvars=(${rvars:|ignored})
+  (( ${#rvars} )) && plain_add "~/.Rprofile" "gh::gh_token() or keyring::key_get() at the point of use" r \
+    "Sys.setenv(${(j:, :)rvars})"
+fi
 if (( ${#plain} )); then
-  result WARN "Plaintext credentials" "${(j:; :)plain} (move to 1Password: op read / op run, gh auth login, aws sso login; false positive? add the name to ${ignore_file/#$HOME/~})" \
+  result WARN "Plaintext credentials" "${(j:; :)plain}; false positive? add the name to ${ignore_file/#$HOME/~} (#false-positive); guide: $GUIDE_URL" \
     "found (names: cynkra-endpoint-check check)"
 else
   result PASS "Plaintext credentials" "none found in the usual places"
@@ -720,7 +790,10 @@ end run
 APPLESCRIPT
   state_set last_notify $(date +%s)
 elif [[ -n "$new_warns" ]] || { $force && [[ -n "$warns" ]]; }; then
-  osascript - "$(print -r -- "${new_warns:-$warns}" | head -1)" <<'APPLESCRIPT' >/dev/null 2>&1
+  msg=$(print -r -- "${new_warns:-$warns}" | head -1)
+  # the detail is too long for a notification; show where the fix is explained instead
+  [[ "$msg" == "Plaintext credentials:"* ]] && msg="Plaintext credentials found; how to fix: $GUIDE_URL"
+  osascript - "$msg" <<'APPLESCRIPT' >/dev/null 2>&1
 on run argv
   display notification (item 1 of argv) with title "Security check" subtitle "Please take care of it soon"
 end run
