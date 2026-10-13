@@ -4,6 +4,7 @@ class CynkraEndpointCheck < Formula
   url "https://github.com/cynkra/homebrew-tap/archive/refs/tags/v0.3.5.tar.gz"
   sha256 "393c4ed35548e1f9790367bf20c5ad5e7876508fa95a73cbe2546a04ca6916fb"
   license "MIT"
+  revision 1
 
   depends_on :macos
   depends_on "osv-scanner"
@@ -15,6 +16,7 @@ class CynkraEndpointCheck < Formula
 
   service do
     run [opt_bin/"cynkra-endpoint-check", "run"]
+    run_type :interval # without it, Homebrew drops interval and the check runs only at login
     environment_variables PATH: std_service_path_env
     run_at_load true
     interval 86400
@@ -28,6 +30,8 @@ class CynkraEndpointCheck < Formula
         cynkra-endpoint-check owner name@cynkra.com
         brew services start cynkra-endpoint-check
       Show the result now: cynkra-endpoint-check check
+      After an upgrade, reload the background service:
+        brew services restart cynkra-endpoint-check
     EOS
   end
 

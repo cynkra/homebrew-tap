@@ -42,3 +42,7 @@ jobs:
           brew audit --strict cynkra/tap/cynkra-endpoint-check
           brew install cynkra/tap/cynkra-endpoint-check
           brew test cynkra/tap/cynkra-endpoint-check
+          # the service runs at login and once a day; Homebrew drops interval unless run_type is :interval
+          plist="$(brew --prefix cynkra-endpoint-check)/sh.brew.cynkra-endpoint-check.plist"
+          test "$(plutil -extract StartInterval raw "$plist")" = 86400
+          test "$(plutil -extract RunAtLoad raw "$plist")" = true
