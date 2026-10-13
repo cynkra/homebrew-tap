@@ -26,7 +26,7 @@ cynkra-endpoint-check check --json           # full report as JSON, e.g. > repor
 
 `check` only prints; it writes no report files.
 
-Updates arrive with `brew upgrade`.
+Updates arrive with `brew upgrade`; afterwards run `brew services restart cynkra-endpoint-check` so the background service picks up the new version.
 Remove with `brew services stop cynkra-endpoint-check && brew uninstall cynkra-endpoint-check`.
 
 What leaves the device: only devices registered with an `@cynkra.com` owner send a short status to cynkra's overview once a day; anyone else using this tap sends nothing.
