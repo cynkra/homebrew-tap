@@ -79,6 +79,7 @@ expect INFO "Other updates" FAKE_UPDATES="Command Line Tools for Xcode|27.0"
 expect INFO "Find My Mac" FAKE_VM=1
 expect FAIL "VPN full tunnel" FAKE_VM=1
 expect PASS "VPN full tunnel" FAKE_VM=1 FAKE_DEFAULT_IF=utun4
+expect PASS "VPN full tunnel" FAKE_VM=1 FAKE_PUBLIC_IF=utun4   # wg-quick: 0/1 and 128.0/1, default route stays on en0
 expect FAIL "Fleet agent" FAKE_VM=1
 expect PASS "Fleet agent" FAKE_VM=1 FAKE_FLEET_RUNNING=1
 expect PASS "AI extensions" FAKE_VM=1 TEST_VSCODE_EXT=ms-python.python
