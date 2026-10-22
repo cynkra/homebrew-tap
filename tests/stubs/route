@@ -1,2 +1,3 @@
 #!/bin/zsh
-print -r -- "   interface: ${FAKE_DEFAULT_IF:-en0}"
+# route -n get <dest>: the default route uses FAKE_DEFAULT_IF; other destinations FAKE_PUBLIC_IF, else the default
+[[ "$3" == default ]] && print -r -- "   interface: ${FAKE_DEFAULT_IF:-en0}" || print -r -- "   interface: ${FAKE_PUBLIC_IF:-${FAKE_DEFAULT_IF:-en0}}"

@@ -45,7 +45,7 @@ ENTRY_SCRIPT_VERSION="entry.1572118900"
 HELP_URL=""             # optional: guide offered in the alert
 GUIDE_URL="https://github.com/cynkra/homebrew-tap/blob/main/docs/credentials.md"  # credentials guide
 
-SCRIPT_VERSION="0.3.5"
+SCRIPT_VERSION="0.3.6"
 LABEL="ch.cynkra.endpoint-check"
 APP_DIR="$HOME/Library/Application Support/cynkra-endpoint-check"
 OLD_APP_DIR="$HOME/Library/Application Support/cynkra-baseline-check"  # before 0.3.0
@@ -409,10 +409,12 @@ fi
 # Customer VM: controls that run only inside the VM
 if $in_vm; then
   # all traffic through the cynkra VPN (WireGuard full tunnel)
-  if route -n get default 2>/dev/null | grep -q "interface: utun"; then
-    result PASS "VPN full tunnel" "default route via $(route -n get default | awk '/interface:/{print $2}')"
+  # a public address, not the default route: wg-quick routes 0/1 and 128.0/1 and leaves the default route alone
+  vpn_if=$(route -n get 1.1.1.1 2>/dev/null | awk '/interface:/{print $2}')
+  if [[ "$vpn_if" == utun* ]]; then
+    result PASS "VPN full tunnel" "internet route via $vpn_if"
   else
-    result FAIL "VPN full tunnel" "default route not via VPN (start the cynkra WireGuard tunnel)"
+    result FAIL "VPN full tunnel" "internet route not via VPN (start the cynkra WireGuard tunnel)"
   fi
   # Fleet agent (fleetd: orbit and osqueryd)
   if pgrep -x orbit >/dev/null || pgrep -x osqueryd >/dev/null; then
