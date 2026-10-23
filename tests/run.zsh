@@ -77,14 +77,16 @@ expect INFO "Other updates" FAKE_UPDATES="Command Line Tools for Xcode|27.0"
 
 # customer VM
 expect INFO "Find My Mac" FAKE_VM=1
-expect FAIL "VPN full tunnel" FAKE_VM=1
-expect PASS "VPN full tunnel" FAKE_VM=1 FAKE_DEFAULT_IF=utun4
-expect PASS "VPN full tunnel" FAKE_VM=1 FAKE_PUBLIC_IF=utun4   # wg-quick: 0/1 and 128.0/1, default route stays on en0
-expect FAIL "Fleet agent" FAKE_VM=1
-expect PASS "Fleet agent" FAKE_VM=1 FAKE_FLEET_RUNNING=1
-expect PASS "AI extensions" FAKE_VM=1 TEST_VSCODE_EXT=ms-python.python
-expect FAIL "AI extensions" FAKE_VM=1 TEST_VSCODE_EXT=github.copilot
-expect FAIL "AI extensions" FAKE_VM=1 TEST_VSCODE_EXT=anthropic.claude-code
+expect FAIL "VPN full tunnel" FAKE_VM=1 CUSTOMER_VM_DIR=/
+expect PASS "VPN full tunnel" FAKE_VM=1 CUSTOMER_VM_DIR=/ FAKE_DEFAULT_IF=utun4
+expect PASS "VPN full tunnel" FAKE_VM=1 CUSTOMER_VM_DIR=/ FAKE_PUBLIC_IF=utun4   # wg-quick: 0/1 and 128.0/1, default route stays on en0
+expect FAIL "Fleet agent" FAKE_VM=1 CUSTOMER_VM_DIR=/
+expect PASS "Fleet agent" FAKE_VM=1 CUSTOMER_VM_DIR=/ FAKE_FLEET_RUNNING=1
+expect PASS "AI extensions" FAKE_VM=1 CUSTOMER_VM_DIR=/ TEST_VSCODE_EXT=ms-python.python
+expect FAIL "AI extensions" FAKE_VM=1 CUSTOMER_VM_DIR=/ TEST_VSCODE_EXT=github.copilot
+expect FAIL "AI extensions" FAKE_VM=1 CUSTOMER_VM_DIR=/ TEST_VSCODE_EXT=anthropic.claude-code
+expect NONE "VPN full tunnel" FAKE_VM=1 CUSTOMER_VM_DIR=/nonexistent   # a VM without the customer VM setup, e.g. a jump host
+expect NONE "Fleet agent" FAKE_VM=1 CUSTOMER_VM_DIR=/nonexistent
 
 # plaintext credentials: names only, values from 1Password, other variables and paths are fine
 expect PASS "Plaintext credentials"
@@ -220,7 +222,7 @@ privacy() {
   print 'export GH_TOKEN=ghp_abc123' > $tmp/.zprofile
   (cd $tmp && env -i HOME=$tmp PATH="$stubs:/usr/bin:/bin:/usr/sbin:/sbin" NOTIFY_LOG=/dev/null CURL_LOG=$tmp/curl.log \
     CYNKRA_ENDPOINT_CHECK_FORM_URL=http://form.invalid/formResponse SOCKETFILTERFW=$stubs/socketfilterfw \
-    FAKE_DEFAULTS_FMMEnabled=1 AUTOSTART_DIRS=$tmp/agents ONEPASSWORD_APP=$tmp FAKE_VM=1 \
+    FAKE_DEFAULTS_FMMEnabled=1 AUTOSTART_DIRS=$tmp/agents ONEPASSWORD_APP=$tmp FAKE_VM=1 CUSTOMER_VM_DIR=/ \
     FAKE_DOCKER_PS="customerx-db 0.0.0.0:5432->5432/tcp" /bin/zsh $script run --offline --force >/dev/null 2>&1)
   sent=$(cat $tmp/curl.log 2>/dev/null)
   for check in "SSH keys: 1 without passphrase" "New autostart entries: 1 new" "Plaintext credentials: found" \

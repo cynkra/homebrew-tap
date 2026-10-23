@@ -155,6 +155,9 @@ progress "checking security settings"
 # Running inside a virtual machine (e.g. a customer VM in VirtualBuddy)?
 in_vm=false
 [[ "$(sysctl -n kern.hv_vmm_present 2>/dev/null)" == "1" ]] && in_vm=true
+# Customer VM: a VM that the customer VM setup (setup.sh in the ISMS repository) has prepared; other VMs get the host checks only
+customer_vm=false
+$in_vm && [[ -d ${CUSTOMER_VM_DIR:-/Library/cynkra} ]] && customer_vm=true
 
 # Owner: without it the central overview cannot tell whose device a report is from
 if [[ -n "$(state_get owner)" ]]; then
@@ -407,7 +410,7 @@ else
 fi
 
 # Customer VM: controls that run only inside the VM
-if $in_vm; then
+if $customer_vm; then
   # all traffic through the cynkra VPN (WireGuard full tunnel)
   # a public address, not the default route: wg-quick routes 0/1 and 128.0/1 and leaves the default route alone
   vpn_if=$(route -n get 1.1.1.1 2>/dev/null | awk '/interface:/{print $2}')
