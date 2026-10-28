@@ -25,6 +25,11 @@ expect() {
         OnDemand) /usr/bin/plutil -insert MachServices -dictionary "$tmp/agents/${spec%%:*}.plist" ;;
       esac
     fi
+    if [[ "$a" == TEST_SERVICE=* ]]; then  # TEST_SERVICE=<login|daily>: plist written by brew services
+      local plist=$tmp/Library/LaunchAgents/sh.brew.cynkra-endpoint-check.plist; mkdir -p ${plist:h}
+      /usr/bin/plutil -create xml1 $plist && /usr/bin/plutil -insert RunAtLoad -bool true $plist
+      [[ "${a#*=}" == daily ]] && /usr/bin/plutil -insert StartInterval -integer 86400 $plist
+    fi
     if [[ "$a" == TEST_KNOWN=* ]]; then  # TEST_KNOWN=<label>: recorded by an earlier run
       mkdir -p "$tmp/Library/Application Support/cynkra-endpoint-check"
       print -r -- "${a#*=}" >> "$tmp/Library/Application Support/cynkra-endpoint-check/autostart_known"
@@ -152,6 +157,9 @@ expect PASS 1Password
 expect FAIL 1Password ONEPASSWORD_APP=/nonexistent
 
 expect WARN Owner
+expect INFO "Daily run"
+expect WARN "Daily run" TEST_SERVICE=login
+expect PASS "Daily run" TEST_SERVICE=daily
 expect PASS Owner TEST_FILE="Library/Application Support/cynkra-endpoint-check/owner:jannes@cynkra.com"
 
 # notifications in scheduled runs: <expected count after run 1> <after run 2> [VAR=value ...]

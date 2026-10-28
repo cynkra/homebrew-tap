@@ -45,7 +45,7 @@ ENTRY_SCRIPT_VERSION="entry.1572118900"
 HELP_URL=""             # optional: guide offered in the alert
 GUIDE_URL="https://github.com/cynkra/homebrew-tap/blob/main/docs/credentials.md"  # credentials guide
 
-SCRIPT_VERSION="0.3.6"
+SCRIPT_VERSION="0.3.8"
 LABEL="ch.cynkra.endpoint-check"
 APP_DIR="$HOME/Library/Application Support/cynkra-endpoint-check"
 OLD_APP_DIR="$HOME/Library/Application Support/cynkra-baseline-check"  # before 0.3.0
@@ -164,6 +164,16 @@ if [[ -n "$(state_get owner)" ]]; then
   result PASS "Owner" "$(state_get owner)"
 else
   result WARN "Owner" "not set (cynkra-endpoint-check owner name@cynkra.com)"
+fi
+
+# Daily run: brew upgrade does not rewrite the service plist, so a service started before 13.10.2026 still runs only at login
+service_plist=$HOME/Library/LaunchAgents/sh.brew.cynkra-endpoint-check.plist
+if [[ ! -f $service_plist ]]; then
+  result INFO "Daily run" "service not started (brew services start cynkra-endpoint-check)"
+elif plutil -extract StartInterval raw "$service_plist" >/dev/null 2>&1; then
+  result PASS "Daily run" "at login and every day"
+else
+  result WARN "Daily run" "only at login (brew services restart cynkra-endpoint-check)"
 fi
 
 # FileVault
