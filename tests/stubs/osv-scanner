@@ -1,2 +1,5 @@
 #!/bin/zsh
+# FAKE_OSV_SLEEP=<s>: a slow database download; FAKE_OSV_JSON=<json>: scan output (exit 1 = findings or failure)
+[[ -n "$FAKE_OSV_SLEEP" ]] && sleep $FAKE_OSV_SLEEP
+[[ -n "$FAKE_OSV_JSON" ]] && print -r -- "$FAKE_OSV_JSON"
 exit 1

@@ -184,6 +184,33 @@ notify 0 0                                         # healthy device: nothing
 notify 1 1 FAKE_FDESETUP="FileVault is Off."       # failed check: alert, repeated after 20 h only
 notify 1 1 FAKE_FDESETUP="Encryption in progress"  # warning: once, not again while unchanged
 
+# an open warning is shown again after WARN_REMIND_DAYS
+tmp=$(mktemp -d); app="$tmp/Library/Application Support/cynkra-endpoint-check"
+mkdir -p "$app"; print jannes@cynkra.com > "$app/owner"
+for i in 1 2; do
+  (cd $tmp && env -i HOME=$tmp PATH="$stubs:/usr/bin:/bin:/usr/sbin:/sbin" NOTIFY_LOG=$tmp/notify.log CYNKRA_ENDPOINT_CHECK_FORM_URL= \
+    SOCKETFILTERFW=$stubs/socketfilterfw FAKE_DEFAULTS_FMMEnabled=1 AUTOSTART_DIRS=$tmp/agents ONEPASSWORD_APP=$tmp FAKE_FDESETUP="Encryption in progress" \
+    /bin/zsh $script run --offline >/dev/null 2>&1)
+  print $(( $(date +%s) - 8 * 86400 )) > "$app/last_warn_notify"
+done
+if [[ "$(grep -c . $tmp/notify.log)" == 2 ]]; then (( passed++ )); else
+  (( failed++ )); print -r -- "not ok: an open warning should be shown again after a week"; fi
+rm -rf $tmp
+
+# vulnerability check: an unfinished or failed scan is reported, not counted as clean
+vuln() {  # vuln <expected status> <check> [VAR=value ...]
+  local want=$1 check=$2; shift 2
+  local tmp=$(mktemp -d) line
+  line=$(cd $tmp && env -i HOME=$tmp PATH="$stubs:/usr/bin:/bin:/usr/sbin:/sbin" NOTIFY_LOG=/dev/null CYNKRA_ENDPOINT_CHECK_FORM_URL= \
+    SOCKETFILTERFW=$stubs/socketfilterfw FAKE_DEFAULTS_FMMEnabled=1 AUTOSTART_DIRS=$tmp/agents ONEPASSWORD_APP=$tmp \
+    CYNKRA_ENDPOINT_CHECK_OSV_TIMEOUT_S=2 "$@" /bin/zsh $script check 2>&1 | grep -E "^$want +$check( |$)")
+  if [[ -n "$line" ]]; then (( passed++ )); else (( failed++ )); print -r -- "not ok: $check should be $want with $*"; fi
+  rm -rf $tmp
+}
+vuln WARN "Vulnerability check"                       # no output from osv-scanner
+vuln WARN "Vulnerability check" FAKE_OSV_SLEEP=30     # download takes too long: stopped after the time limit
+vuln PASS "Vulnerable packages" 'FAKE_OSV_JSON={"results": []}'
+
 # central report only with a cynkra owner (the tap is public; other users send nothing)
 report_attempt() {  # report_attempt <expected yes|no> [owner]
   local want=$1 owner=$2 tmp=$(mktemp -d) got=no

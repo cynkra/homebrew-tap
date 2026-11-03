@@ -19,7 +19,7 @@ brew services start cynkra-endpoint-check    # runs at login and once a day, rep
 Show the result at any time:
 
 ```sh
-cynkra-endpoint-check check                  # about 2 min with the vulnerability scan
+cynkra-endpoint-check check                  # about 2 min with the vulnerability scan; the first database download can take up to 10 min
 cynkra-endpoint-check check --offline        # quick check without network, about 1 s
 cynkra-endpoint-check check --json           # full report as JSON, e.g. > report.json
 ```
