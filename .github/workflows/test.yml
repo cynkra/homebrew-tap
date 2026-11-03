@@ -39,6 +39,7 @@ jobs:
       - name: Formula
         run: |
           brew tap cynkra/tap "$GITHUB_WORKSPACE"
+          brew trust cynkra/tap   # Homebrew 7 loads third-party formulae only once trusted
           brew audit --strict cynkra/tap/cynkra-endpoint-check
           brew install cynkra/tap/cynkra-endpoint-check
           brew test cynkra/tap/cynkra-endpoint-check

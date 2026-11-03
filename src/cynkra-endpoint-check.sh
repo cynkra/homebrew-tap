@@ -30,6 +30,8 @@ PENDING_FAIL_DAYS=14    # pending updates within the installed major version: FA
 VULN_INTERVAL_DAYS=7    # scheduled runs: vulnerability check once a week
 REPORT_INTERVAL_HOURS=20  # report at most this often, unless the status changes
 NOTIFY_INTERVAL_HOURS=20  # repeat the alert for failed checks at most this often
+WARN_REMIND_DAYS=7        # repeat the notification for open warnings this often
+OSV_TIMEOUT_S=${CYNKRA_ENDPOINT_CHECK_OSV_TIMEOUT_S:-600}  # give up on the vulnerability database download after 10 minutes
 
 # Google Form for the central overview (empty: send nothing). Form and Sheet setup:
 # handbook/endpoints/uebersicht/ in the ISMS repository. The form is writable without login; the reports are a
@@ -45,7 +47,7 @@ ENTRY_SCRIPT_VERSION="entry.1572118900"
 HELP_URL=""             # optional: guide offered in the alert
 GUIDE_URL="https://github.com/cynkra/homebrew-tap/blob/main/docs/credentials.md"  # credentials guide
 
-SCRIPT_VERSION="0.3.8"
+SCRIPT_VERSION="0.3.9"
 LABEL="ch.cynkra.endpoint-check"
 APP_DIR="$HOME/Library/Application Support/cynkra-endpoint-check"
 OLD_APP_DIR="$HOME/Library/Application Support/cynkra-baseline-check"  # before 0.3.0
@@ -562,7 +564,7 @@ if $offline || ! $vuln_due; then
   result INFO "Vulnerability check" "skipped ($($offline && echo offline || echo "runs weekly"))"
 elif command -v syft >/dev/null && command -v osv-scanner >/dev/null; then
   state_set last_vuln $(date +%s)
-  progress "scanning developer packages for known vulnerabilities (about a minute)"
+  progress "scanning developer packages for known vulnerabilities (about a minute; longer while the vulnerability databases download)"
   tmp=$(mktemp -d)
   targets=() kinds=()
   add() { [[ -d "$2" ]] && { targets+=("$2"); kinds+=("$1"); } }
@@ -629,8 +631,18 @@ json.dump({"bomFormat": "CycloneDX", "specVersion": "1.5", "components": compone
 json.dump({f"{k[0]}\t{k[1]}": sorted(v) for k, v in where.items()}, open(d + "/where.json", "w"))
 json.dump(sorted(u.split("/", 1)[1] for u in unknown - known), open(d + "/unknown.json", "w"))
 PY
+  # in the background with a time limit: the first download of the databases can take very long
   osv-scanner scan -L "$tmp/sbom.cdx.json" --offline-vulnerabilities --download-offline-databases \
-    --format json > "$tmp/osv.json" 2>/dev/null
+    --format json > "$tmp/osv.json" 2>/dev/null &
+  osv_pid=$! waited=0
+  while kill -0 $osv_pid 2>/dev/null && (( waited < OSV_TIMEOUT_S )); do sleep 1; (( waited++ )); done
+  kill $osv_pid 2>/dev/null; wait $osv_pid 2>/dev/null
+  # osv-scanner exits non-zero when it finds something, so only valid output counts as a finished scan
+  if ! python3 -c 'import json,sys; json.load(open(sys.argv[1]))["results"]' "$tmp/osv.json" 2>/dev/null; then
+    rm -rf "$tmp"
+    state_set last_vuln 0  # retry at the next run instead of in a week
+    result WARN "Vulnerability check" "not finished (database download took longer than $(( OSV_TIMEOUT_S / 60 )) min, or failed); retried at the next run"
+  else
   findings=$(python3 - "$tmp" <<'PY'
 import json, sys
 d = sys.argv[1]
@@ -702,6 +714,7 @@ if rest:
     line += ("; " if line else "") + f"{rest} without a fix yet"
 print(line)')
     result INFO "Other advisories" "$oth advisories, nothing to do now: $adv_summary"
+  fi
   fi
 else
   result WARN "Vulnerability check" "needs syft and osv-scanner (brew install syft osv-scanner)"
@@ -784,11 +797,12 @@ if [[ -n "$FORM_URL" ]] && { $force || [[ "$overall" != "$(state_get last_status
 fi
 
 # Notify: FAIL as an alert, repeated at most every NOTIFY_INTERVAL_HOURS;
-# WARN as a notification, only when a warning is new or has changed since the last run
+# WARN as a notification when a warning is new or has changed, and again every WARN_REMIND_DAYS while open
 warns=$(print -r -- "$rows" | awk -F'\t' '$1=="WARN"{print $2": "$3}')
 new_warns=$(comm -13 <(state_get warns_seen | sort) <(print -r -- "$warns" | sort) | grep .)
 state_set warns_seen "$warns"
 last=$(state_get last_notify); [[ "$last" == <-> ]] || last=0
+last_warn=$(state_get last_warn_notify); [[ "$last_warn" == <-> ]] || last_warn=0
 if [[ "$overall" == fail ]] && { $force || (( $(date +%s) - last >= NOTIFY_INTERVAL_HOURS * 3600 )); }; then
   msg=$(print -r -- "$rows" | awk -F'\t' '$1=="FAIL"{print $2": "$3}')
   osascript - "$msg" "$HELP_URL" <<'APPLESCRIPT' >/dev/null 2>&1
@@ -804,7 +818,7 @@ on run argv
 end run
 APPLESCRIPT
   state_set last_notify $(date +%s)
-elif [[ -n "$new_warns" ]] || { $force && [[ -n "$warns" ]]; }; then
+elif [[ -n "$new_warns" ]] || { [[ -n "$warns" ]] && { $force || (( $(date +%s) - last_warn >= WARN_REMIND_DAYS * 86400 )); }; }; then
   msg=$(print -r -- "${new_warns:-$warns}" | head -1)
   # the detail is too long for a notification; show where the fix is explained instead
   [[ "$msg" == "Plaintext credentials:"* ]] && msg="Plaintext credentials found; how to fix: $GUIDE_URL"
@@ -813,4 +827,5 @@ on run argv
   display notification (item 1 of argv) with title "Security check" subtitle "Please take care of it soon"
 end run
 APPLESCRIPT
+  state_set last_warn_notify $(date +%s)
 fi
