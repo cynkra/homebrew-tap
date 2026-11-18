@@ -264,13 +264,44 @@ privacy() {
                "Container ports (docker): 1 containers" "AI extensions: 1 installed"; do
     [[ "$sent" == *"$check"* ]] || bad+=" missing '$check';"
   done
-  for leak in id_customerx com.example.secretapp GH_TOKEN .zprofile customerx-db 5432 github.copilot; do
+  for leak in id_customerx com.example.secretapp GH_TOKEN .zprofile customerx-db 5432 github.copilot "names:" last-report; do
     [[ "$sent" == *"$leak"* ]] && bad+=" sent '$leak';"
   done
   rm -rf $tmp
   if [[ -z "$bad" ]]; then (( passed++ )); else (( failed++ )); print -r -- "not ok: central report:$bad"; fi
 }
 privacy
+
+# check shows what the daily run would send: the fields for a registered Mac, "nothing" otherwise
+payload_shown() {  # payload_shown <owner or ""> <expected text>
+  local tmp=$(mktemp -d) out app
+  app="$tmp/Library/Application Support/cynkra-endpoint-check"
+  [[ -n "$1" ]] && { mkdir -p "$app"; print -r -- "$1" > "$app/owner"; }
+  out=$(cd $tmp && env -i HOME=$tmp PATH="$stubs:/usr/bin:/bin:/usr/sbin:/sbin" SOCKETFILTERFW=$stubs/socketfilterfw \
+    FAKE_DEFAULTS_FMMEnabled=1 AUTOSTART_DIRS=$tmp/agents ONEPASSWORD_APP=$tmp /bin/zsh $script check --offline 2>/dev/null)
+  rm -rf $tmp
+  if [[ "$out" == *"$2"* ]]; then (( passed++ )); else
+    (( failed++ )); print -r -- "not ok: check with owner '${1}' should show '$2'"; fi
+}
+payload_shown jannes@cynkra.com "  Owner:          jannes@cynkra.com"
+payload_shown jannes@cynkra.com "  Model:          Mac15,12"
+payload_shown "" "Sent to cynkra: nothing"
+
+# result line: passed, passed with warnings, failed
+result_line() {  # result_line <expected text> [env...]
+  local want=$1 tmp=$(mktemp -d) out; shift
+  mkdir -p "$tmp/Library/Application Support/cynkra-endpoint-check"
+  print test@cynkra.com > "$tmp/Library/Application Support/cynkra-endpoint-check/owner"  # no Owner warning
+  out=$(cd $tmp && env -i HOME=$tmp PATH="$stubs:/usr/bin:/bin:/usr/sbin:/sbin" SOCKETFILTERFW=$stubs/socketfilterfw \
+    FAKE_DEFAULTS_FMMEnabled=1 AUTOSTART_DIRS=$tmp/agents ONEPASSWORD_APP=$tmp "$@" /bin/zsh $script check --offline 2>/dev/null | grep '^Result:')
+  rm -rf $tmp
+  if [[ "$out" == "$want" ]]; then (( passed++ )); else
+    (( failed++ )); print -r -- "not ok: with ${*:-defaults} expected '$want'; got '$out'"; fi
+}
+result_line "Result: all checks passed"
+result_line "Result: checks passed with 1 warning(s)" FAKE_SUDO_EXIT=0
+result_line "Result: 1 check(s) failed" FAKE_FIREWALL=disabled
+result_line "Result: 1 check(s) failed, 1 warning(s)" FAKE_FIREWALL=disabled FAKE_SUDO_EXIT=0
 
 # help and version do not run the check; unknown input fails
 cli() {  # cli <expected exit> <expected text> args...
