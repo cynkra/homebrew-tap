@@ -24,7 +24,7 @@ cynkra-endpoint-check check --offline        # quick check without network, abou
 cynkra-endpoint-check check --json           # full report as JSON, e.g. > report.json
 ```
 
-`check` only prints; it writes no report files.
+`check` only prints; it writes no report files and sends nothing. At the end it lists exactly what the daily run sends to cynkra.
 
 Updates arrive with `brew upgrade`; afterwards run `brew services restart cynkra-endpoint-check` so the background service picks up the new version.
 Remove with `brew services stop cynkra-endpoint-check && brew uninstall cynkra-endpoint-check`.

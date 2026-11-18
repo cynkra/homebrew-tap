@@ -47,7 +47,7 @@ ENTRY_SCRIPT_VERSION="entry.1572118900"
 HELP_URL=""             # optional: guide offered in the alert
 GUIDE_URL="https://github.com/cynkra/homebrew-tap/blob/main/docs/credentials.md"  # credentials guide
 
-SCRIPT_VERSION="0.3.9"
+SCRIPT_VERSION="0.3.10"
 LABEL="ch.cynkra.endpoint-check"
 APP_DIR="$HOME/Library/Application Support/cynkra-endpoint-check"
 OLD_APP_DIR="$HOME/Library/Application Support/cynkra-baseline-check"  # before 0.3.0
@@ -393,7 +393,7 @@ if [[ -f ~/.Rprofile ]]; then
 fi
 if (( ${#plain} )); then
   result WARN "Plaintext credentials" "${(j:; :)plain}; false positive? add the name to ${ignore_file/#$HOME/~} (#false-positive); guide: $GUIDE_URL" \
-    "found (names: cynkra-endpoint-check check)"
+    "found"
 else
   result PASS "Plaintext credentials" "none found in the usual places"
 fi
@@ -538,9 +538,9 @@ known=$(state_get autostart_known)
 if [[ -n "$known" ]]; then
   new=$(comm -13 <(print -r -- "$known") <(print -r -- "$autostart") | grep .)
   if [[ -n "$new" ]]; then
-    # names: run records them as known, so a later check no longer lists them; last-report.txt keeps them
+    # run records them as known, so a later check no longer lists them; last-report.txt keeps the names
     result WARN "New autostart entries" "${(j:, :)${(f)new}} (since the last check; turn off if not needed)" \
-      "$(print -r -- "$new" | grep -c .) new (names: ${APP_DIR/#$HOME/~}/last-report.txt)"
+      "$(print -r -- "$new" | grep -c .) new"
   fi
 fi
 state_set autostart_known "$autostart"
@@ -690,7 +690,7 @@ import collections, json, sys
 per = collections.Counter(w for e in json.load(sys.stdin)["fixable"] for w in e.get("where", ["?"]))
 print(", ".join(f"{w} {n}" for w, n in per.most_common(6)) + (f", {len(per) - 6} more" if len(per) > 6 else ""))')
     result WARN "Vulnerable packages" "$fix fixable in $fix_where (update within 14 days, or remove installations you no longer use; details: check --json)" \
-      "$fix fixable (details: cynkra-endpoint-check check)"
+      "$fix fixable"
   else
     result PASS "Vulnerable packages" "none fixable"
   fi
@@ -729,7 +729,10 @@ User:     $(id -un)
 Device:   $host, ID $serial
 macOS:    $(sw_vers -productVersion) ($(sw_vers -buildVersion))$($in_vm && echo ", virtual machine")
 "
-summary=$([[ $fails -eq 0 ]] && echo "Result: all checks passed" || echo "Result: $fails check(s) failed")
+nwarn=$(print -r -- "$rows" | grep -c '^WARN')
+if (( fails )); then summary="Result: $fails check(s) failed$( (( nwarn )) && echo ", $nwarn warning(s)")"
+elif (( nwarn )); then summary="Result: checks passed with $nwarn warning(s)"
+else summary="Result: all checks passed"; fi
 
 json_report() {
   printf "%s" "$rows" | python3 -c '
@@ -746,12 +749,37 @@ json.dump({"date": date, "user": user, "host": host, "device_id": serial,
 ' "$(id -un)" "$host" "$serial" "$(sw_vers -productVersion)" "$(date '+%Y-%m-%dT%H:%M')" "$fails" "$autostart" "$container_images" "$findings"
 }
 
+overall=ok
+print -r -- "$rows" | grep -q '^WARN' && overall=warn
+(( fails )) && overall=fail
+# Central report: the check name and its summary only, never the detail, which can contain
+# names of files, keys, variables, apps, containers or extensions
+sent=$(print -r -- "$rows" | awk -F'\t' '$1=="FAIL"||$1=="WARN"{print $2($4!=""?": "$4:"")}')
+# Only devices registered to a cynkra address report; anyone else using the public tap sends nothing
+[[ "$(state_get owner)" == ?*@cynkra.com ]] || FORM_URL=""
+# What the scheduled run sends, as label, form field, value; check shows the same list
+payload=(
+  "Device ID"      "$ENTRY_DEVICE_ID"      "$serial"
+  "Owner"          "$ENTRY_OWNER"          "$(state_get owner)"
+  "Model"          "$ENTRY_MODEL"          "$(sysctl -n hw.model)"
+  "macOS"          "$ENTRY_OS_VERSION"     "$(sw_vers -productVersion)"
+  "Status"         "$ENTRY_STATUS"         "$overall"
+  "Details"        "$ENTRY_DETAILS"        "${(j:; :)${(f)sent}}"
+  "Script version" "$ENTRY_SCRIPT_VERSION" "$SCRIPT_VERSION"
+)
+
 # Manual check: print only, write no files
 if [[ "$cmd" == check ]]; then
   if $json; then
     json_report; echo
   else
-    printf "%s\n%s\n%s\n" "$header" "$report" "$summary"
+    printf "%s\n%s\n%s\n\n" "$header" "$report" "$summary"
+    if [[ -n "$FORM_URL" ]]; then
+      echo "Sent to cynkra by the daily run (this check sends nothing):"
+      for label field value in "${payload[@]}"; do printf "  %-15s %s\n" "$label:" "$value"; done
+    else
+      echo "Sent to cynkra: nothing (register this Mac with: cynkra-endpoint-check owner name@cynkra.com)"
+    fi
   fi
   exit 0
 fi
@@ -766,29 +794,16 @@ fi
 json_report > "$out.json"
 
 # Scheduled run: report to the central overview and notify the person if something is to do
-overall=ok
-print -r -- "$rows" | grep -q '^WARN' && overall=warn
-(( fails )) && overall=fail
-# Local log: full details. Central report: the check name and its summary only, never the
-# detail, which can contain names of files, keys, variables, apps, containers or extensions
+# Local log: full details
 todo=$(print -r -- "$rows" | awk -F'\t' '$1=="FAIL"||$1=="WARN"{print $2": "$3}')
-sent=$(print -r -- "$rows" | awk -F'\t' '$1=="FAIL"||$1=="WARN"{print $2($4!=""?": "$4:"")}')
 log "status $overall; ${(j:; :)${(f)todo}}"
 
 last=$(state_get last_report); [[ "$last" == <-> ]] || last=0
-# Only devices registered to a cynkra address report; anyone else using the public tap sends nothing
-[[ "$(state_get owner)" == ?*@cynkra.com ]] || FORM_URL=""
 if [[ -n "$FORM_URL" ]] && { $force || [[ "$overall" != "$(state_get last_status)" ]] || \
      (( $(date +%s) - last >= REPORT_INTERVAL_HOURS * 3600 )); }; then
-  model=$(sysctl -n hw.model)
-  code=$(curl -sS --max-time 30 -o /dev/null -w '%{http_code}' "$FORM_URL" \
-    --data-urlencode "$ENTRY_DEVICE_ID=$serial" \
-    --data-urlencode "$ENTRY_OWNER=$(state_get owner)" \
-    --data-urlencode "$ENTRY_MODEL=$model" \
-    --data-urlencode "$ENTRY_OS_VERSION=$(sw_vers -productVersion)" \
-    --data-urlencode "$ENTRY_STATUS=$overall" \
-    --data-urlencode "$ENTRY_DETAILS=${(j:; :)${(f)sent}}" \
-    --data-urlencode "$ENTRY_SCRIPT_VERSION=$SCRIPT_VERSION") || code=000
+  form_args=()
+  for label field value in "${payload[@]}"; do form_args+=(--data-urlencode "$field=$value"); done
+  code=$(curl -sS --max-time 30 -o /dev/null -w '%{http_code}' "$FORM_URL" "${form_args[@]}") || code=000
   if [[ "$code" == 200 ]]; then
     state_set last_report $(date +%s); state_set last_status $overall; log "report sent ($overall)"
   else
