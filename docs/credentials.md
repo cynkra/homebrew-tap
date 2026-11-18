@@ -272,6 +272,33 @@ Import your existing key into 1Password and delete the file, or at least give it
 ssh-keygen -p -f ~/.ssh/id_ed25519
 ```
 
+### Passphrase in the macOS keychain
+
+If you don't use 1Password, a passphrase doesn't have to mean typing it all the time.
+macOS can keep it in your keychain, and after that the key works without any prompt, as before.
+Set the passphrase, then store it in the keychain once:
+
+```sh
+ssh-keygen -p -f ~/.ssh/id_ed25519
+ssh-add --apple-use-keychain ~/.ssh/id_ed25519
+```
+
+Then add this to `~/.ssh/config`, so the passphrase is read from the keychain after a restart too:
+
+```
+Host *
+  UseKeychain yes
+  AddKeysToAgent yes
+```
+
+Keys with other names than the default `id_ed25519`, `id_ecdsa` and `id_rsa` also need an `IdentityFile ~/.ssh/<key>` line, either under `Host *` or under the host they are for.
+Repeat both commands for each key.
+
+This needs Apple's own `ssh`. If you installed `openssh` with Homebrew, it doesn't know `--apple-use-keychain` or `UseKeychain`: run `/usr/bin/ssh-add --apple-use-keychain …`, and put `IgnoreUnknown UseKeychain` above `UseKeychain yes` in the config.
+
+The key file on disk is now encrypted, which is what the check looks for.
+Compared with 1Password, nothing asks for Touch ID when the key is used: while you are logged in, programs running as you can use the key through the agent.
+
 ## Dotfiles repo
 
 If you keep your dotfiles in git, add a pre-commit hook that blocks secrets:
