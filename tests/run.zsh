@@ -272,6 +272,26 @@ privacy() {
 }
 privacy
 
+# check --dry-run prints exactly what run sends
+dry_run() {
+  local tmp=$(mktemp -d) app sent shown bad="" l
+  app="$tmp/Library/Application Support/cynkra-endpoint-check"
+  mkdir -p "$app"; print test@cynkra.com > "$app/owner"
+  go() { (cd $tmp && env -i HOME=$tmp PATH="$stubs:/usr/bin:/bin:/usr/sbin:/sbin" NOTIFY_LOG=/dev/null CURL_LOG=$tmp/curl.log \
+    CYNKRA_ENDPOINT_CHECK_FORM_URL=http://form.invalid/formResponse SOCKETFILTERFW=$stubs/socketfilterfw \
+    FAKE_DEFAULTS_FMMEnabled=1 AUTOSTART_DIRS=$tmp/agents ONEPASSWORD_APP=$tmp FAKE_FDESETUP="FileVault is Off." \
+    /bin/zsh $script "$@" --offline 2>/dev/null) }
+  shown=$(go check --dry-run)
+  go run --force >/dev/null
+  sent=$(cat $tmp/curl.log 2>/dev/null)
+  [[ "$(print -r -- "$shown" | grep -c .)" == 7 ]] || bad+=" expected 7 fields;"
+  [[ "$shown" == *"status: fail"* && "$shown" == *"details: FileVault"* ]] || bad+=" status/details missing;"
+  for l in ${(f)shown}; do [[ "$sent" == *"=${l#*: }"* ]] || bad+=" '${l%%: *}' not as sent;"; done
+  rm -rf $tmp
+  if [[ -z "$bad" ]]; then (( passed++ )); else (( failed++ )); print -r -- "not ok: check --dry-run:$bad"; fi
+}
+dry_run
+
 # help and version do not run the check; unknown input fails
 cli() {  # cli <expected exit> <expected text> args...
   local want_rc=$1 want=$2; shift 2

@@ -22,6 +22,7 @@ Show the result at any time:
 cynkra-endpoint-check check                  # about 2 min with the vulnerability scan; the first database download can take up to 10 min
 cynkra-endpoint-check check --offline        # quick check without network, about 1 s
 cynkra-endpoint-check check --json           # full report as JSON, e.g. > report.json
+cynkra-endpoint-check check --dry-run        # exactly the fields the daily run sends to cynkra
 ```
 
 `check` only prints; it writes no report files.

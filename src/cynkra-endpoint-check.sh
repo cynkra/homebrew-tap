@@ -8,9 +8,9 @@
 # owners only) gets only the status per check and summaries without names of files, keys,
 # variables, apps, containers or extensions.
 # Usage:
-#   cynkra-endpoint-check.sh [check] [--offline] [--json]
-#                                                 show the result (--json: as JSON), write no
-#                                                 files, send nothing (default)
+#   cynkra-endpoint-check.sh [check] [--offline] [--json | --dry-run]
+#                                                 show the result (--json: as JSON; --dry-run: the
+#                                                 fields run would send), write no files, send nothing (default)
 #   cynkra-endpoint-check.sh install <name@cynkra.com>
 #                                                 install; runs at login and once a day
 #   cynkra-endpoint-check.sh owner <name@cynkra.com>
@@ -37,17 +37,12 @@ OSV_TIMEOUT_S=${CYNKRA_ENDPOINT_CHECK_OSV_TIMEOUT_S:-600}  # give up on the vuln
 # handbook/endpoints/uebersicht/ in the ISMS repository. The form is writable without login; the reports are a
 # convenience, the evidence is the monthly export to the ISMS repository.
 FORM_URL="${CYNKRA_ENDPOINT_CHECK_FORM_URL-https://docs.google.com/forms/d/e/1FAIpQLSddA7vSG9aLSW9p4wHtDZhP0GZQi4-OL8KR9YjeTtehA24pSg/formResponse}"  # tests set CYNKRA_ENDPOINT_CHECK_FORM_URL= to send nothing
-ENTRY_DEVICE_ID="entry.358592572"
-ENTRY_OWNER="entry.855206442"
-ENTRY_MODEL="entry.1513216855"
-ENTRY_OS_VERSION="entry.1072409779"
-ENTRY_STATUS="entry.1326653575"
-ENTRY_DETAILS="entry.1302829151"
-ENTRY_SCRIPT_VERSION="entry.1572118900"
+typeset -A ENTRY=(device_id entry.358592572 owner entry.855206442 model entry.1513216855
+  os_version entry.1072409779 status entry.1326653575 details entry.1302829151 script_version entry.1572118900)
 HELP_URL=""             # optional: guide offered in the alert
 GUIDE_URL="https://github.com/cynkra/homebrew-tap/blob/main/docs/credentials.md"  # credentials guide
 
-SCRIPT_VERSION="0.3.9"
+SCRIPT_VERSION="0.3.10"
 LABEL="ch.cynkra.endpoint-check"
 APP_DIR="$HOME/Library/Application Support/cynkra-endpoint-check"
 OLD_APP_DIR="$HOME/Library/Application Support/cynkra-baseline-check"  # before 0.3.0
@@ -66,11 +61,12 @@ usage() {
 cynkra-endpoint-check $SCRIPT_VERSION: read-only security check of this Mac (changes nothing, needs no admin rights)
 
 Usage:
-  cynkra-endpoint-check [check] [--offline] [--json]
+  cynkra-endpoint-check [check] [--offline] [--json | --dry-run]
                                                show the result now; writes no files and sends nothing;
                                                --offline skips the steps that need the network (outdated
                                                packages, vulnerabilities); --json prints the full report
-                                               as JSON (save it with > report.json)
+                                               as JSON (save it with > report.json); --dry-run prints
+                                               exactly the fields run would send to cynkra
   cynkra-endpoint-check owner name@cynkra.com  register this Mac to you; only registered Macs report
   cynkra-endpoint-check run [--force]          check, report to cynkra, notify (what the background
                                                service runs once a day)
@@ -81,7 +77,7 @@ More: https://github.com/cynkra/homebrew-tap
 USAGE
 }
 
-cmd=check force=false offline=false json=false
+cmd=check force=false offline=false json=false dry_run=false
 case "$1" in
   -h|--help|help) usage; exit 0 ;;
   -V|--version|version) print -r -- "cynkra-endpoint-check $SCRIPT_VERSION"; exit 0 ;;
@@ -95,6 +91,7 @@ if [[ "$cmd" == (check|run) ]]; then
       --offline) offline=true ;;
       --force) force=true ;;
       --json) json=true ;;
+      --dry-run) dry_run=true ;;
       -h|--help) usage; exit 0 ;;
       *) print -u2 -r -- "Unknown option: $a"; usage >&2; exit 2 ;;
     esac
@@ -746,9 +743,25 @@ json.dump({"date": date, "user": user, "host": host, "device_id": serial,
 ' "$(id -un)" "$host" "$serial" "$(sw_vers -productVersion)" "$(date '+%Y-%m-%dT%H:%M')" "$fails" "$autostart" "$container_images" "$findings"
 }
 
+overall=ok
+print -r -- "$rows" | grep -q '^WARN' && overall=warn
+(( fails )) && overall=fail
+# Local log: full details. Central report: the check name and its summary only, never the
+# detail, which can contain names of files, keys, variables, apps, containers or extensions
+todo=$(print -r -- "$rows" | awk -F'\t' '$1=="FAIL"||$1=="WARN"{print $2": "$3}')
+sent=$(print -r -- "$rows" | awk -F'\t' '$1=="FAIL"||$1=="WARN"{print $2($4!=""?": "$4:"")}')
+# The central report, in send order; check --dry-run prints it, run sends it
+payload=(device_id "$serial" owner "$(state_get owner)" model "$(sysctl -n hw.model)"
+  os_version "$(sw_vers -productVersion)" status "$overall" details "${(j:; :)${(f)sent}}"
+  script_version "$SCRIPT_VERSION")
+
 # Manual check: print only, write no files
 if [[ "$cmd" == check ]]; then
-  if $json; then
+  if $dry_run; then
+    [[ "$(state_get owner)" == ?*@cynkra.com ]] ||
+      print -u2 -r -- "Not registered to a cynkra address: run sends nothing. It would send:"
+    for k v in "${payload[@]}"; do print -r -- "$k: $v"; done
+  elif $json; then
     json_report; echo
   else
     printf "%s\n%s\n%s\n" "$header" "$report" "$summary"
@@ -766,13 +779,6 @@ fi
 json_report > "$out.json"
 
 # Scheduled run: report to the central overview and notify the person if something is to do
-overall=ok
-print -r -- "$rows" | grep -q '^WARN' && overall=warn
-(( fails )) && overall=fail
-# Local log: full details. Central report: the check name and its summary only, never the
-# detail, which can contain names of files, keys, variables, apps, containers or extensions
-todo=$(print -r -- "$rows" | awk -F'\t' '$1=="FAIL"||$1=="WARN"{print $2": "$3}')
-sent=$(print -r -- "$rows" | awk -F'\t' '$1=="FAIL"||$1=="WARN"{print $2($4!=""?": "$4:"")}')
 log "status $overall; ${(j:; :)${(f)todo}}"
 
 last=$(state_get last_report); [[ "$last" == <-> ]] || last=0
@@ -780,15 +786,9 @@ last=$(state_get last_report); [[ "$last" == <-> ]] || last=0
 [[ "$(state_get owner)" == ?*@cynkra.com ]] || FORM_URL=""
 if [[ -n "$FORM_URL" ]] && { $force || [[ "$overall" != "$(state_get last_status)" ]] || \
      (( $(date +%s) - last >= REPORT_INTERVAL_HOURS * 3600 )); }; then
-  model=$(sysctl -n hw.model)
-  code=$(curl -sS --max-time 30 -o /dev/null -w '%{http_code}' "$FORM_URL" \
-    --data-urlencode "$ENTRY_DEVICE_ID=$serial" \
-    --data-urlencode "$ENTRY_OWNER=$(state_get owner)" \
-    --data-urlencode "$ENTRY_MODEL=$model" \
-    --data-urlencode "$ENTRY_OS_VERSION=$(sw_vers -productVersion)" \
-    --data-urlencode "$ENTRY_STATUS=$overall" \
-    --data-urlencode "$ENTRY_DETAILS=${(j:; :)${(f)sent}}" \
-    --data-urlencode "$ENTRY_SCRIPT_VERSION=$SCRIPT_VERSION") || code=000
+  form=()
+  for k v in "${payload[@]}"; do form+=(--data-urlencode "${ENTRY[$k]}=$v"); done
+  code=$(curl -sS --max-time 30 -o /dev/null -w '%{http_code}' "$FORM_URL" "${form[@]}") || code=000
   if [[ "$code" == 200 ]]; then
     state_set last_report $(date +%s); state_set last_status $overall; log "report sent ($overall)"
   else
